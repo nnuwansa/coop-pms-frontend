@@ -23,8 +23,22 @@ export default async function middleware(request: NextRequest) {
     const isPublicPath = publicPaths.includes(path);
 
     // Check if the user is authenticated by looking for the is_authenticated cookie
-    const is_authenticated = request.cookies.get('is_authenticated')?.value;
-    const isAuthenticated = !!is_authenticated;
+    // const is_authenticated = request.cookies.get('is_authenticated')?.value;
+    // const isAuthenticated = !!is_authenticated;
+   
+
+
+const access_token = request.cookies.get('access_token')?.value;
+let isAuthenticated = false;
+
+if (access_token) {
+    try {
+        const decoded = decodeJwt(access_token);
+        isAuthenticated = !!decoded;
+    } catch {
+        isAuthenticated = false;
+    }
+}
 
     // If the path requires authentication and the user isn't authenticated
     if (!isPublicPath && !isAuthenticated) {
