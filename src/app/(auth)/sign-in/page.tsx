@@ -146,7 +146,7 @@
 
 'use client';
 
-import {useRouter, useSearchParams} from 'next/navigation';
+import { useSearchParams} from 'next/navigation';
 import Link from 'next/link';
 import {zodResolver} from '@hookform/resolvers/zod';
 import {useForm} from 'react-hook-form';
@@ -167,7 +167,7 @@ const formSchema = z.object({
 });
 
 function LoginForm() {
-    const router = useRouter();
+    
     const searchParams = useSearchParams();
     const nextUrl = searchParams.get('callbackUrl') || '/letters';
 
@@ -181,13 +181,22 @@ function LoginForm() {
         },
     });
 
+    // const onSubmit = async (data: z.infer<typeof formSchema>) => {
+    //     clearError();
+    //     const success = await login(data.email, data.password);
+    //     if (success) {
+    //         // router.push(nextUrl.toString());
+    //         window.location.href = nextUrl.toString();
+    //     }
+    // }
+
     const onSubmit = async (data: z.infer<typeof formSchema>) => {
-        clearError();
-        const success = await login(data.email, data.password);
-        if (success) {
-            router.push(nextUrl.toString());
-        }
+    clearError();
+    const success = await login(data.email, data.password);
+    if (success) {
+        window.location.href = nextUrl.toString();
     }
+}
 
     return (
         <div className="min-h-screen overflow-hidden flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4 sm:px-6 lg:px-8">
