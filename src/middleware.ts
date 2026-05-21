@@ -135,31 +135,6 @@
 
 
 
-// import {NextRequest, NextResponse} from "next/server";
-
-// const publicPaths = ['/sign-in', '/sign-up'];
-
-// export default async function middleware(request: NextRequest) {
-//     const path = request.nextUrl.pathname;
-
-//     if (path === '/') {
-//         return NextResponse.redirect(new URL("/letters", request.nextUrl), {status: 308});
-//     }
-
-//     // Middleware level cookie check skip කරන්න
-//     // Auth check frontend side (auth-store) handle කරනවා
-//     return NextResponse.next();
-// }
-
-// export const config = {
-//     matcher: [
-//         '/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)',
-//     ],
-// }
-
-
-
-
 import {NextRequest, NextResponse} from "next/server";
 
 const publicPaths = ['/sign-in', '/sign-up'];
@@ -171,22 +146,8 @@ export default async function middleware(request: NextRequest) {
         return NextResponse.redirect(new URL("/letters", request.nextUrl), {status: 308});
     }
 
-    const isPublicPath = publicPaths.some(p => path.startsWith(p));
-    
-    // Cookie check කරන්න
-    const accessToken = request.cookies.get('access_token')?.value;
-    const isAuthenticated = !!accessToken;
-
-    if (!isPublicPath && !isAuthenticated) {
-        const url = new URL('/sign-in', request.url);
-        url.searchParams.set('callbackUrl', encodeURI(path));
-        return NextResponse.redirect(url);
-    }
-
-    if (isPublicPath && isAuthenticated) {
-        return NextResponse.redirect(new URL('/letters', request.url));
-    }
-
+    // Middleware level cookie check skip කරන්න
+    // Auth check frontend side (auth-store) handle කරනවා
     return NextResponse.next();
 }
 
