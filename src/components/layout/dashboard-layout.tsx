@@ -50,7 +50,6 @@
 // }
 
 
-
 'use client';
 
 import {Sidebar} from './sidebar';
@@ -61,15 +60,19 @@ import {ACCESS_TOKEN_EXPIRE_MINUTES} from "@/lib/client-config";
 
 export function DashboardLayout({children}: { children: ReactNode }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-    const {refreshToken, isAuthenticated} = useAuthStore();
+    const [isLoading, setIsLoading] = useState(true); 
+    const {refreshToken} = useAuthStore();
 
     useEffect(() => {
         let isSubscribed = true;
 
         const attemptRefresh = async () => {
             const success = await refreshToken();
-            if (!success && isSubscribed) {
-                window.location.href = '/sign-in';
+            if (isSubscribed) {
+                setIsLoading(false); // check karana ekata
+                if (!success) {
+                    window.location.href = '/sign-in';
+                }
             }
         };
 
@@ -85,7 +88,10 @@ export function DashboardLayout({children}: { children: ReactNode }) {
         };
     }, [refreshToken]);
 
-    if (isAuthenticated === false) return null;
+   
+    if (isLoading) return null;
+
+    // if (isAuthenticated === false) return null;
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
