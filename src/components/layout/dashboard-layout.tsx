@@ -12,32 +12,58 @@ export function DashboardLayout({children}: { children: ReactNode }) {
     const {refreshToken} = useAuthStore();
 
     // Try to refresh the token when the app loads
+    // useEffect(() => {
+    //     let isSubscribed = true;
+
+    //     const attemptRefresh = async () => {
+    //         const success = await refreshToken();
+    //         if (!success && isSubscribed) {
+    //             console.error('Failed to refresh token');
+    //             redirect('/sign-in');
+    //         }
+    //     };
+
+    //     // Initial refresh attempt
+    //     attemptRefresh();
+
+    //     // Set up a refresh interval
+    //     const refreshInterval = setInterval(attemptRefresh,
+    //         // Refresh slightly before token expires
+    //         (ACCESS_TOKEN_EXPIRE_MINUTES * 60 - 30) * 1000
+    //     );
+
+    //     // Cleanup function
+    //     return () => {
+    //         isSubscribed = false;
+    //         clearInterval(refreshInterval);
+    //     };
+    // }, [refreshToken]);
     useEffect(() => {
-        let isSubscribed = true;
+    let isSubscribed = true;
 
-        const attemptRefresh = async () => {
-            const success = await refreshToken();
-            if (!success && isSubscribed) {
-                console.error('Failed to refresh token');
-                redirect('/sign-in');
-            }
-        };
+    const attemptRefresh = async () => {
+        const success = await refreshToken();
+        if (!success && isSubscribed) {
+            
+            setTimeout(() => {
+                if (isSubscribed) {
+                    window.location.href = '/sign-in';
+                }
+            }, 1000); // 1 second wait
+        }
+    };
 
-        // Initial refresh attempt
-        attemptRefresh();
+    attemptRefresh();
 
-        // Set up a refresh interval
-        const refreshInterval = setInterval(attemptRefresh,
-            // Refresh slightly before token expires
-            (ACCESS_TOKEN_EXPIRE_MINUTES * 60 - 30) * 1000
-        );
+    const refreshInterval = setInterval(attemptRefresh,
+        (ACCESS_TOKEN_EXPIRE_MINUTES * 60 - 30) * 1000
+    );
 
-        // Cleanup function
-        return () => {
-            isSubscribed = false;
-            clearInterval(refreshInterval);
-        };
-    }, [refreshToken]);
+    return () => {
+        isSubscribed = false;
+        clearInterval(refreshInterval);
+    };
+}, [refreshToken]);
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
             <Sidebar isOpen={isSidebarOpen}/>
