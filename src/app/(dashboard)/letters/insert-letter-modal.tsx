@@ -8,6 +8,8 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
+import {Check, ChevronsUpDown} from "lucide-react";
+import {Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList} from "@/components/ui/command";
 import {Form, FormControl, FormField, FormItem, FormLabel, FormMessage,} from "@/components/ui/form";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue,} from "@/components/ui/select";
 import {Input} from "@/components/ui/input";
@@ -99,6 +101,7 @@ export function InsertLetterModal({organizations, onSuccess}: InsertLetterModalP
     const [isOpen, setIsOpen] = useState(false);
     const [sources, setSources] = useState<{ id: number; name: string }[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [orgSearch, setOrgSearch] = useState("");
     const fileInputRef = useRef<HTMLInputElement>(null);
     const {hasPermission} = useAuthStore();
 
@@ -163,12 +166,13 @@ export function InsertLetterModal({organizations, onSuccess}: InsertLetterModalP
 
     // Reset the form and dataLoaded state when modal is closed
     const handleOpenChange = (open: boolean) => {
-        setIsOpen(open);
-        if (!open) {
-            reset();
-            setIsLoading(false);
-        }
-    };
+    setIsOpen(open);
+    if (!open) {
+        reset();
+        setIsLoading(false);
+        setOrgSearch(""); 
+    }
+};
 
     async function onSubmit(data: RemarkFormValues) {
         setIsSubmitting(true);
@@ -396,7 +400,7 @@ export function InsertLetterModal({organizations, onSuccess}: InsertLetterModalP
                                             />
                                         </div>
                                         <div className="w-full lg:w-1/2">
-                                            <FormField
+                                            {/* <FormField
                                                 control={control}
                                                 name="organization"
                                                 render={({field}) => (
@@ -442,7 +446,111 @@ export function InsertLetterModal({organizations, onSuccess}: InsertLetterModalP
                                                         <FormMessage/>
                                                     </FormItem>
                                                 )}
-                                            />
+                                            /> */}
+                                            <FormField
+    control={control}
+    name="organization"
+    render={({field}) => (
+        <FormItem className="w-full">
+            <FormLabel htmlFor={field.name}>Organization</FormLabel>
+            <Popover>
+                <PopoverTrigger asChild>
+                    <FormControl>
+                        <Button
+                            variant="outline"
+                            role="combobox"
+                            disabled={isSubmitting}
+                            className={cn(
+                                "w-full justify-between font-normal",
+                                !field.value && "text-muted-foreground"
+                            )}
+                        >
+                            <span className="truncate text-start">
+                                {field.value
+                                    ? organizations.find((org) => org.id === field.value)?.name
+                                    : "Select organization"}
+                            </span>
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
+                        </Button>
+                    </FormControl>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    {/* <Command>
+                        <CommandInput placeholder="Search organization..."/>
+                        <CommandList>
+                            <CommandEmpty>No organization found.</CommandEmpty>
+                            <CommandGroup>
+                                {field.value && (
+                                    <CommandItem
+                                        onSelect={() => field.onChange(undefined)}
+                                        className="text-muted-foreground"
+                                    >
+                                        Clear selection
+                                    </CommandItem>
+                                )}
+                                {organizations.map((org) => (
+                                    <CommandItem
+                                        key={org.id}
+                                        value={org.name}
+                                        onSelect={() => field.onChange(org.id)}
+                                    >
+                                        <Check
+                                            className={cn(
+                                                "mr-2 h-4 w-4",
+                                                field.value === org.id ? "opacity-100" : "opacity-0"
+                                            )}
+                                        />
+                                        {org.name}
+                                    </CommandItem>
+                                ))}
+                            </CommandGroup>
+                        </CommandList>
+                    </Command> */}
+
+                    <Command
+    filter={(value, search) => {
+        if (!search) return 1;
+        // value is the org.id as string, so we need custom filtering
+        return 1; // show all, we filter manually below
+    }}
+>
+    <CommandInput 
+        placeholder="Search organization..."
+        value={orgSearch}
+        onValueChange={setOrgSearch}
+    />
+    <CommandList>
+        <CommandEmpty>No organization found.</CommandEmpty>
+        <CommandGroup>
+            {field.value && (
+                <CommandItem onSelect={() => field.onChange(undefined)} className="text-muted-foreground">
+                    Clear selection
+                </CommandItem>
+            )}
+            {organizations
+                .filter(org => 
+                    !orgSearch || org.name.toLowerCase().includes(orgSearch.toLowerCase())
+                )
+                .map((org) => (
+                    <CommandItem
+                        key={org.id}
+                        value={org.id.toString()}
+                        onSelect={() => field.onChange(org.id)}
+                    >
+                        <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
+                        {org.name}
+                    </CommandItem>
+                ))
+            }
+        </CommandGroup>
+    </CommandList>
+</Command>
+                </PopoverContent>
+            </Popover>
+            <FormMessage/>
+        </FormItem>
+    )}
+/>
                                         </div>
                                     </div>
 
