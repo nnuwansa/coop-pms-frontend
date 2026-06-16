@@ -284,12 +284,13 @@ export default function OrganizationPage() {
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            organizations.map((organization) => (
-                                                <TableRow key={organization.id}>
-                                                    <TableCell className="text-center">{organization.id}</TableCell>
-                                                    <TableCell
-                                                        className="font-medium truncate max-w-40">{organization.name}</TableCell>
-                                                    <TableCell className="text-center">
+                                            organizations.map((organization, index) => (
+                                            <TableRow key={organization.id}>
+                                                <TableCell className="text-center">
+                                                    {(pagination.currentPage - 1) * pagination.pageSize + index + 1}
+                                                </TableCell>
+                                                <TableCell className="font-medium truncate max-w-40">{organization.name}</TableCell>
+                                                <TableCell className="text-center">
                                                         <div className="flex items-center justify-center h-full">
                                                             <DropdownMenu>
                                                                 <DropdownMenuTrigger asChild>
