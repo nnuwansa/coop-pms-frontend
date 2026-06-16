@@ -555,8 +555,7 @@ const handleAddOrganization = async () => {
                     <Command
     filter={(value, search) => {
         if (!search) return 1;
-        // value is the org.id as string, so we need custom filtering
-        return 1; // show all, we filter manually below
+        return 1;
     }}
 >
     <CommandInput 
@@ -566,16 +565,14 @@ const handleAddOrganization = async () => {
     />
     <CommandList>
         <CommandEmpty>No organization found.</CommandEmpty>
-        {/* <CommandGroup>
+        <CommandGroup>
             {field.value && (
                 <CommandItem onSelect={() => field.onChange(undefined)} className="text-muted-foreground">
                     Clear selection
                 </CommandItem>
             )}
             {organizations
-                .filter(org => 
-                    !orgSearch || org.name.toLowerCase().includes(orgSearch.toLowerCase())
-                )
+                .filter(org => !orgSearch || org.name.toLowerCase().includes(orgSearch.toLowerCase()))
                 .map((org) => (
                     <CommandItem
                         key={org.id}
@@ -587,73 +584,51 @@ const handleAddOrganization = async () => {
                     </CommandItem>
                 ))
             }
-        </CommandGroup> */}
-
-        <CommandGroup>
-    {field.value && (
-        <CommandItem onSelect={() => field.onChange(undefined)} className="text-muted-foreground">
-            Clear selection
-        </CommandItem>
-    )}
-    {organizations
-        .filter(org => !orgSearch || org.name.toLowerCase().includes(orgSearch.toLowerCase()))
-        .map((org) => (
-            <CommandItem
-                key={org.id}
-                value={org.id.toString()}
-                onSelect={() => field.onChange(org.id)}
-            >
-                <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
-                {org.name}
-            </CommandItem>
-        ))
-    }
-</CommandGroup>
-
-{/* Add new organization section */}
-<div className="border-t p-2">
-    {isAddingOrg ? (
-        <div className="flex gap-2">
-            <Input
-                placeholder="Organization name..."
-                value={newOrgName}
-                onChange={(e) => setNewOrgName(e.target.value)}
-                className="h-8 text-sm"
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddOrganization();
-                    }
-                    if (e.key === 'Escape') {
-                        setIsAddingOrg(false);
-                        setNewOrgName("");
-                    }
-                }}
-                autoFocus
-            />
-            <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization}>
-                Add
-            </Button>
-            <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => {
-                setIsAddingOrg(false);
-                setNewOrgName("");
-            }}>
-                <X className="h-4 w-4"/>
-            </Button>
-        </div>
-    ) : (
-        <Button
-            type="button"
-            variant="ghost"
-            className="w-full h-8 text-sm justify-start text-muted-foreground hover:text-foreground"
-            onClick={() => setIsAddingOrg(true)}
-        >
-            <Plus className="mr-2 h-4 w-4"/>
-            Add new organization
-        </Button>
-    )}
-</div>
+        </CommandGroup>
     </CommandList>
+
+    <div className="border-t p-2">
+        {isAddingOrg ? (
+            <div className="flex gap-2">
+                <Input
+                    placeholder="Organization name..."
+                    value={newOrgName}
+                    onChange={(e) => setNewOrgName(e.target.value)}
+                    className="h-8 text-sm"
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddOrganization();
+                        }
+                        if (e.key === 'Escape') {
+                            setIsAddingOrg(false);
+                            setNewOrgName("");
+                        }
+                    }}
+                    autoFocus
+                />
+                <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization}>
+                    Add
+                </Button>
+                <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => {
+                    setIsAddingOrg(false);
+                    setNewOrgName("");
+                }}>
+                    <X className="h-4 w-4"/>
+                </Button>
+            </div>
+        ) : (
+            <Button
+                type="button"
+                variant="ghost"
+                className="w-full h-8 text-sm justify-start text-muted-foreground hover:text-foreground"
+                onClick={() => setIsAddingOrg(true)}
+            >
+                <Plus className="mr-2 h-4 w-4"/>
+                Add new organization
+            </Button>
+        )}
+    </div>
 </Command>
                 </PopoverContent>
             </Popover>
