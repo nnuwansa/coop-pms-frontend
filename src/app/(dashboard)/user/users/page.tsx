@@ -732,10 +732,12 @@ export default function UsersPage() {
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    users.map((user) => (
-                                        <TableRow key={user.id}>
-                                            {columnVisibility.id &&
-                                                <TableCell className="max-w-[50px]">{user.id}</TableCell>}
+                                    users.map((user, index) => (
+                                    <TableRow key={user.id}>
+                                        {columnVisibility.id &&
+                                            <TableCell className="max-w-[50px]">
+                                                {(currentPage - 1) * pageSize + index + 1}
+                                            </TableCell>}
                                             {columnVisibility.first_name && <TableCell
                                                 className="truncate max-w-[150px]">{user.first_name}</TableCell>}
                                             {columnVisibility.last_name && <TableCell
@@ -881,8 +883,7 @@ export default function UsersPage() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Are you sure you want to delete this user account?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This will permanently delete user account <span
-                            className="font-semibold">#{deleteUserAlert.userId}</span>.
+                            This will permanently delete user account.
                             This action cannot be undone.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
