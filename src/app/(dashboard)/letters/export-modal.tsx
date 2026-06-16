@@ -61,6 +61,7 @@ export function ExportModal({isOpen, onCloseAction}: ExportModalProps) {
     ]);
 
     const [isExporting, setIsExporting] = useState(false);
+    const [orientation, setOrientation] = useState<'landscape' | 'portrait'>('landscape');
     const handleExport = async () => {
         try {
             setIsExporting(true);
@@ -152,6 +153,7 @@ export function ExportModal({isOpen, onCloseAction}: ExportModalProps) {
                 <title>Letters Report</title>
                 <style>
                     body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
+                    @page { size: ${orientation};  margin: 10mm;}
                     h1 { text-align: center; font-size: 18px; margin-bottom: 5px; }
                     .subtitle { text-align: center; color: #666; margin-bottom: 15px; font-size: 12px; }
                     table { width: 100%; border-collapse: collapse; }
@@ -160,6 +162,7 @@ export function ExportModal({isOpen, onCloseAction}: ExportModalProps) {
                     tr:nth-child(even) { background-color: #f9f9f9; }
                     .print-btn { display: block; margin: 10px auto; padding: 8px 20px; cursor: pointer; }
                     @media print { .print-btn { display: none; } }
+                    
                 </style>
             </head>
             <body>
@@ -230,6 +233,19 @@ export function ExportModal({isOpen, onCloseAction}: ExportModalProps) {
                                 })
                             }
                         />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Page Orientation</Label>
+                        <Select value={orientation} onValueChange={(v: 'landscape' | 'portrait') => setOrientation(v)}>
+                            <SelectTrigger className="w-full">
+                                <SelectValue/>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="landscape">Landscape</SelectItem>
+                                <SelectItem value="portrait">Portrait</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     <div className="space-y-2">
