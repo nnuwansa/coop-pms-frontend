@@ -28,8 +28,7 @@ export function DeleteDialog({deleteAlert, setDeleteAlert, onSuccess}: DeleteDia
                 <AlertDialogHeader>
                     <AlertDialogTitle>Are you sure you want to delete this organization?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        This will permanently delete organization <span
-                        className="font-semibold">#{deleteAlert.Id}</span>.
+                        This will permanently delete the organization.
                         This action cannot be undone.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
