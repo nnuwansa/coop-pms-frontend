@@ -91,12 +91,18 @@ const remarkFormSchema = z.object({
 
 type RemarkFormValues = z.infer<typeof remarkFormSchema>;
 
+// interface InsertLetterModalProps {
+//     organizations: { id: number; name: string }[];
+//     onSuccess?: () => void;
+// }
+
 interface InsertLetterModalProps {
     organizations: { id: number; name: string }[];
+    onOrganizationAdded?: (org: { id: number; name: string }) => void;
     onSuccess?: () => void;
 }
 
-export function InsertLetterModal({organizations, onSuccess}: InsertLetterModalProps) {
+export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded}: InsertLetterModalProps)  {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
     const [sources, setSources] = useState<{ id: number; name: string }[]>([]);
@@ -104,6 +110,8 @@ export function InsertLetterModal({organizations, onSuccess}: InsertLetterModalP
     const [orgSearch, setOrgSearch] = useState("");
     const fileInputRef = useRef<HTMLInputElement>(null);
     const {hasPermission} = useAuthStore();
+    const [isAddingOrg, setIsAddingOrg] = useState(false);
+    const [newOrgName, setNewOrgName] = useState("");
 
     const form = useForm<RemarkFormValues>({
         resolver: zodResolver(remarkFormSchema),
@@ -171,6 +179,43 @@ export function InsertLetterModal({organizations, onSuccess}: InsertLetterModalP
         reset();
         setIsLoading(false);
         setOrgSearch(""); 
+    }
+};
+
+// const handleAddOrganization = async () => {
+//     if (!newOrgName.trim()) return;
+//     try {
+//         const res = await api.post('/v1/organization/', {name: newOrgName.trim()});
+//         const data = res.data;
+//         const newOrg = data.data;
+        
+//         onSuccess?.();
+        
+//         setValue('organization', newOrg.id);
+//         setNewOrgName("");
+//         setIsAddingOrg(false);
+//         toast.success("Organization added successfully");
+//     } catch (error) {
+//         toast.error(error.response?.data.message || 'Failed to add organization');
+//     }
+// };
+
+
+const handleAddOrganization = async () => {
+    if (!newOrgName.trim()) return;
+    try {
+        const res = await api.post('/v1/organization/', {name: newOrgName.trim()});
+        const data = res.data;
+        const newOrg = data.data;
+        
+        onOrganizationAdded?.(newOrg);  // ← onSuccess?.() වෙනුවට මේක
+        
+        setValue('organization', newOrg.id);
+        setNewOrgName("");
+        setIsAddingOrg(false);
+        toast.success("Organization added successfully");
+    } catch (error) {
+        toast.error(error.response?.data.message || 'Failed to add organization');
     }
 };
 
@@ -521,7 +566,7 @@ export function InsertLetterModal({organizations, onSuccess}: InsertLetterModalP
     />
     <CommandList>
         <CommandEmpty>No organization found.</CommandEmpty>
-        <CommandGroup>
+        {/* <CommandGroup>
             {field.value && (
                 <CommandItem onSelect={() => field.onChange(undefined)} className="text-muted-foreground">
                     Clear selection
@@ -542,7 +587,72 @@ export function InsertLetterModal({organizations, onSuccess}: InsertLetterModalP
                     </CommandItem>
                 ))
             }
-        </CommandGroup>
+        </CommandGroup> */}
+
+        <CommandGroup>
+    {field.value && (
+        <CommandItem onSelect={() => field.onChange(undefined)} className="text-muted-foreground">
+            Clear selection
+        </CommandItem>
+    )}
+    {organizations
+        .filter(org => !orgSearch || org.name.toLowerCase().includes(orgSearch.toLowerCase()))
+        .map((org) => (
+            <CommandItem
+                key={org.id}
+                value={org.id.toString()}
+                onSelect={() => field.onChange(org.id)}
+            >
+                <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
+                {org.name}
+            </CommandItem>
+        ))
+    }
+</CommandGroup>
+
+{/* Add new organization section */}
+<div className="border-t p-2">
+    {isAddingOrg ? (
+        <div className="flex gap-2">
+            <Input
+                placeholder="Organization name..."
+                value={newOrgName}
+                onChange={(e) => setNewOrgName(e.target.value)}
+                className="h-8 text-sm"
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddOrganization();
+                    }
+                    if (e.key === 'Escape') {
+                        setIsAddingOrg(false);
+                        setNewOrgName("");
+                    }
+                }}
+                autoFocus
+            />
+            <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization}>
+                Add
+            </Button>
+            <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => {
+                setIsAddingOrg(false);
+                setNewOrgName("");
+            }}>
+                <X className="h-4 w-4"/>
+            </Button>
+        </div>
+    ) : (
+        <Button
+            type="button"
+            variant="ghost"
+            className="w-full h-8 text-sm justify-start text-muted-foreground hover:text-foreground"
+            onClick={() => setIsAddingOrg(true)}
+        >
+            <Plus className="mr-2 h-4 w-4"/>
+            Add new organization
+        </Button>
+    )}
+</div>
     </CommandList>
 </Command>
                 </PopoverContent>

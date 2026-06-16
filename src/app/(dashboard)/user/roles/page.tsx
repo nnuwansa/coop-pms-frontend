@@ -157,9 +157,11 @@ export default function RolesPage() {
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            roles.map((role) => (
+                                            roles.map((role, index) => (
                                                 <TableRow key={role.id}>
-                                                    <TableCell className="text-center">{role.id}</TableCell>
+                                                    <TableCell className="text-center">
+                                                        {index + 1}
+                                                    </TableCell>
                                                     <TableCell
                                                         className="font-medium truncate max-w-30">{role.name}</TableCell>
                                                     <TableCell

@@ -336,9 +336,10 @@ export default function LetterDashboard() {
                     </p>
                 </div>
                 {!isLoading && <InsertLetterModal
-                    organizations={organizations}
-                    onSuccess={handleRefresh}
-                />}
+    organizations={organizations}
+    onOrganizationAdded={(newOrg) => setOrganizations(prev => [...prev, newOrg])}
+    onSuccess={handleRefresh}
+/>}
             </div>
 
             <div className="grid gap-6 md:grid-cols-4">
@@ -770,7 +771,7 @@ export default function LetterDashboard() {
                             )}
                             <div className="rounded-md border">
                                 <Table className="overflow-x-auto min-w-max w-full mb-2">
-                                    <TableHeader>
+                                   <TableHeader>
                                         <TableRow>
                                             {columnVisibility.id && (
                                                 <TableHead className="w-[50px] text-center">ID</TableHead>
@@ -823,15 +824,14 @@ export default function LetterDashboard() {
                                         </TableBody>
                                     ) : letters.length > 0 ? (
                                         <TableBody>
-                                            {letters.map((item, index) => (
-                                                <Link key={index} href={`/letters/${item.id}`} passHref
-                                                      legacyBehavior>
-                                                    <TableRow
-                                                        className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800">
-                                                        {columnVisibility.id && (
-                                                            <TableCell
-                                                                className="text-center w-[50px]">{item?.id}</TableCell>
-                                                        )}
+                                           {letters.map((item, index) => (
+                                            <Link key={item.id} href={`/letters/${item.id}`} passHref legacyBehavior>
+                                                <TableRow className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800">
+                                                    {columnVisibility.id && (
+                                                        <TableCell className="text-center w-[50px]">
+                                                            {(currentPage - 1) * pageSize + index + 1}
+                                                        </TableCell>
+                                                    )}
                                                         {columnVisibility.code && (
                                                             <TableCell className="w-[150px]">
                                                                 <div className="truncate max-w-[150px]">
