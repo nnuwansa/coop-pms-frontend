@@ -149,8 +149,10 @@ export default function StatusPage() {
                                         ) : (
                                             status.map((status, index) => (
                                                 <TableRow key={status.id}>
-                                                    <TableCell className="text-center">{status.id}</TableCell>
-                                                    <TableCell
+                                                   <TableCell className="text-center">
+                                                {index + 1}
+                                            </TableCell>
+                                             <TableCell
                                                         className="font-medium truncate max-w-20">{status.name}</TableCell>
                                                     <TableCell className="text-center">
                                                         <div className="flex items-center justify-center h-full">

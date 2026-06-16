@@ -283,9 +283,11 @@ export default function DepartmentPage() {
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            departments.map((department) => (
+                                            departments.map((department, index) => (
                                                 <TableRow key={department.id}>
-                                                    <TableCell className="text-center">{department.id}</TableCell>
+                                                    <TableCell className="text-center">
+                                                        {(pagination.currentPage - 1) * pagination.pageSize + index + 1}
+                                                    </TableCell>
                                                     <TableCell
                                                         className="font-medium truncate max-w-40">{department.name}</TableCell>
                                                     <TableCell className="text-center">

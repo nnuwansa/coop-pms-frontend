@@ -147,9 +147,11 @@ export default function SourcePage() {
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            sources.map((source) => (
+                                            sources.map((source, index) => (
                                                 <TableRow key={source.id}>
-                                                    <TableCell className="text-center">{source.id}</TableCell>
+                                                    <TableCell className="text-center">
+                                                        {index + 1}
+                                                    </TableCell>
                                                     <TableCell
                                                         className="font-medium truncate max-w-20">{source.name}</TableCell>
                                                     <TableCell className="text-center">
