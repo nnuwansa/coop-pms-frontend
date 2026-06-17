@@ -108,10 +108,12 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
     const [sources, setSources] = useState<{ id: number; name: string }[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [orgSearch, setOrgSearch] = useState("");
+    const [sourceSearch, setSourceSearch] = useState("");
     const fileInputRef = useRef<HTMLInputElement>(null);
     const {hasPermission} = useAuthStore();
     const [isAddingOrg, setIsAddingOrg] = useState(false);
     const [newOrgName, setNewOrgName] = useState("");
+    
 
     const form = useForm<RemarkFormValues>({
         resolver: zodResolver(remarkFormSchema),
@@ -179,26 +181,11 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
         reset();
         setIsLoading(false);
         setOrgSearch(""); 
+        setSourceSearch(""); 
     }
 };
 
-// const handleAddOrganization = async () => {
-//     if (!newOrgName.trim()) return;
-//     try {
-//         const res = await api.post('/v1/organization/', {name: newOrgName.trim()});
-//         const data = res.data;
-//         const newOrg = data.data;
-        
-//         onSuccess?.();
-        
-//         setValue('organization', newOrg.id);
-//         setNewOrgName("");
-//         setIsAddingOrg(false);
-//         toast.success("Organization added successfully");
-//     } catch (error) {
-//         toast.error(error.response?.data.message || 'Failed to add organization');
-//     }
-// };
+
 
 
 const handleAddOrganization = async () => {
@@ -208,7 +195,7 @@ const handleAddOrganization = async () => {
         const data = res.data;
         const newOrg = data.data;
         
-        onOrganizationAdded?.(newOrg);  // ← onSuccess?.() වෙනුවට මේක
+        onOrganizationAdded?.(newOrg);  
         
         setValue('organization', newOrg.id);
         setNewOrgName("");
@@ -413,91 +400,11 @@ const handleAddOrganization = async () => {
                                     <div className="flex flex-col lg:flex-row justify-between gap-5">
                                         <div className="w-full lg:w-1/2">
                                             <FormField
-                                                control={control}
-                                                name="source"
-                                                render={({field}) => (
-                                                    <FormItem className="w-full">
-                                                        <FormLabel htmlFor={field.name}>Source</FormLabel>
-                                                        <Select
-                                                            onValueChange={(value) => field.onChange(Number(value))}
-                                                            value={field.value?.toString()}
-                                                            disabled={isSubmitting}
-                                                        >
-                                                            <FormControl>
-                                                                <SelectTrigger id={field.name}>
-                                                                    <div
-                                                                        className="text-start w-xs overflow-hidden">
-                                                                        <SelectValue placeholder="Select source"/>
-                                                                    </div>
-                                                                </SelectTrigger>
-                                                            </FormControl>
-                                                            <SelectContent>
-                                                                {sources.map((src) => (
-                                                                    <SelectItem key={src.id} value={src.id.toString()}>
-                                                                        {src.name}
-                                                                    </SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                        <FormMessage/>
-                                                    </FormItem>
-                                                )}
-                                            />
-                                        </div>
-                                        <div className="w-full lg:w-1/2">
-                                            {/* <FormField
-                                                control={control}
-                                                name="organization"
-                                                render={({field}) => (
-                                                    <FormItem className="w-full">
-                                                        <FormLabel htmlFor={field.name}>Organization</FormLabel>
-                                                        <div className="relative">
-                                                            <Select
-                                                                onValueChange={(value) => field.onChange(Number(value))}
-                                                                value={field.value?.toString()}
-                                                                disabled={isSubmitting}>
-                                                                <FormControl>
-                                                                    <SelectTrigger id={field.name}
-                                                                    >
-                                                                        <div
-                                                                            className="text-start w-xs overflow-hidden">
-                                                                            <SelectValue
-                                                                                placeholder="Select organization"/>
-                                                                        </div>
-                                                                    </SelectTrigger>
-                                                                </FormControl>
-                                                                <SelectContent className="w-xs">
-                                                                    {organizations.map((org) => (
-                                                                        <SelectItem key={org.id}
-                                                                                    value={org.id.toString()}>
-                                                                            {org.name}
-                                                                        </SelectItem>
-                                                                    ))}
-                                                                </SelectContent>
-                                                            </Select>
-                                                            {field.value && (
-                                                                <Button
-                                                                    type="button"
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                                    onClick={() => field.onChange("")}
-                                                                    disabled={isSubmitting}
-                                                                >
-                                                                    <X className="h-4 w-4"/>
-                                                                </Button>
-                                                            )}
-                                                        </div>
-                                                        <FormMessage/>
-                                                    </FormItem>
-                                                )}
-                                            /> */}
-                                            <FormField
     control={control}
-    name="organization"
+    name="source"
     render={({field}) => (
         <FormItem className="w-full">
-            <FormLabel htmlFor={field.name}>Organization</FormLabel>
+            <FormLabel htmlFor={field.name}>Source</FormLabel>
             <Popover>
                 <PopoverTrigger asChild>
                     <FormControl>
@@ -512,14 +419,88 @@ const handleAddOrganization = async () => {
                         >
                             <span className="truncate text-start">
                                 {field.value
-                                    ? organizations.find((org) => org.id === field.value)?.name
-                                    : "Select organization"}
+                                    ? sources.find((src) => src.id === field.value)?.name
+                                    : "Select source"}
                             </span>
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
                         </Button>
                     </FormControl>
                 </PopoverTrigger>
                 <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command
+                        filter={() => 1}
+                    >
+                        <CommandInput
+                            placeholder="Search source..."
+                            value={sourceSearch}
+                            onValueChange={setSourceSearch}
+                        />
+                        <CommandList>
+                            <CommandEmpty>No source found.</CommandEmpty>
+                            <CommandGroup>
+                                {field.value && (
+                                    <CommandItem
+                                        onSelect={() => field.onChange(undefined)}
+                                        className="text-muted-foreground"
+                                    >
+                                        Clear selection
+                                    </CommandItem>
+                                )}
+                                {sources
+                                    .filter(src =>
+                                        !sourceSearch || src.name.toLowerCase().includes(sourceSearch.toLowerCase())
+                                    )
+                                    .map((src) => (
+                                        <CommandItem
+                                            key={src.id}
+                                            value={src.id.toString()}
+                                            onSelect={() => field.onChange(src.id)}
+                                        >
+                                            <Check className={cn("mr-2 h-4 w-4", field.value === src.id ? "opacity-100" : "opacity-0")}/>
+                                            {src.name}
+                                        </CommandItem>
+                                    ))
+                                }
+                            </CommandGroup>
+                        </CommandList>
+                    </Command>
+                </PopoverContent>
+            </Popover>
+            <FormMessage/>
+        </FormItem>
+    )}
+/>
+                                        </div>
+                                        <div className="w-full lg:w-1/2">
+                                            
+                                            <FormField
+                                                control={control}
+                                                name="organization"
+                                                render={({field}) => (
+                                                    <FormItem className="w-full">
+                                                        <FormLabel htmlFor={field.name}>Organization</FormLabel>
+                                                        <Popover>
+                                                            <PopoverTrigger asChild>
+                                                                <FormControl>
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        role="combobox"
+                                                                        disabled={isSubmitting}
+                                                                        className={cn(
+                                                                            "w-full justify-between font-normal",
+                                                                            !field.value && "text-muted-foreground"
+                                                                        )}
+                                                                    >
+                                                                        <span className="truncate text-start">
+                                                                            {field.value
+                                                                                ? organizations.find((org) => org.id === field.value)?.name
+                                                                                : "Select organization"}
+                                                                        </span>
+                                                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
+                                                                    </Button>
+                                                                </FormControl>
+                                                            </PopoverTrigger>
+                                                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                     {/* <Command>
                         <CommandInput placeholder="Search organization..."/>
                         <CommandList>
@@ -552,90 +533,90 @@ const handleAddOrganization = async () => {
                         </CommandList>
                     </Command> */}
 
-                    <Command
-    filter={(value, search) => {
-        if (!search) return 1;
-        return 1;
-    }}
->
-    <CommandInput 
-        placeholder="Search organization..."
-        value={orgSearch}
-        onValueChange={setOrgSearch}
-    />
-    <CommandList>
-        <CommandEmpty>No organization found.</CommandEmpty>
-        <CommandGroup>
-            {field.value && (
-                <CommandItem onSelect={() => field.onChange(undefined)} className="text-muted-foreground">
-                    Clear selection
-                </CommandItem>
-            )}
-            {organizations
-                .filter(org => !orgSearch || org.name.toLowerCase().includes(orgSearch.toLowerCase()))
-                .map((org) => (
-                    <CommandItem
-                        key={org.id}
-                        value={org.id.toString()}
-                        onSelect={() => field.onChange(org.id)}
-                    >
-                        <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
-                        {org.name}
-                    </CommandItem>
-                ))
-            }
-        </CommandGroup>
-    </CommandList>
+                                                        <Command
+                                        filter={(value, search) => {
+                                            if (!search) return 1;
+                                            return 1;
+                                        }}
+                                    >
+                                        <CommandInput 
+                                            placeholder="Search organization..."
+                                            value={orgSearch}
+                                            onValueChange={setOrgSearch}
+                                        />
+                                        <CommandList>
+                                            <CommandEmpty>No organization found.</CommandEmpty>
+                                            <CommandGroup>
+                                                {field.value && (
+                                                    <CommandItem onSelect={() => field.onChange(undefined)} className="text-muted-foreground">
+                                                        Clear selection
+                                                    </CommandItem>
+                                                )}
+                                                {organizations
+                                                    .filter(org => !orgSearch || org.name.toLowerCase().includes(orgSearch.toLowerCase()))
+                                                    .map((org) => (
+                                                        <CommandItem
+                                                            key={org.id}
+                                                            value={org.id.toString()}
+                                                            onSelect={() => field.onChange(org.id)}
+                                                        >
+                                                            <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
+                                                            {org.name}
+                                                        </CommandItem>
+                                                    ))
+                                                }
+                                            </CommandGroup>
+                                        </CommandList>
 
-    <div className="border-t p-2">
-        {isAddingOrg ? (
-            <div className="flex gap-2">
-                <Input
-                    placeholder="Organization name..."
-                    value={newOrgName}
-                    onChange={(e) => setNewOrgName(e.target.value)}
-                    className="h-8 text-sm"
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddOrganization();
-                        }
-                        if (e.key === 'Escape') {
-                            setIsAddingOrg(false);
-                            setNewOrgName("");
-                        }
-                    }}
-                    autoFocus
-                />
-                <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization}>
-                    Add
-                </Button>
-                <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => {
-                    setIsAddingOrg(false);
-                    setNewOrgName("");
-                }}>
-                    <X className="h-4 w-4"/>
-                </Button>
-            </div>
-        ) : (
-            <Button
-                type="button"
-                variant="ghost"
-                className="w-full h-8 text-sm justify-start text-muted-foreground hover:text-foreground"
-                onClick={() => setIsAddingOrg(true)}
-            >
-                <Plus className="mr-2 h-4 w-4"/>
-                Add new organization
-            </Button>
-        )}
-    </div>
-</Command>
-                </PopoverContent>
-            </Popover>
-            <FormMessage/>
-        </FormItem>
-    )}
-/>
+                                        <div className="border-t p-2">
+                                            {isAddingOrg ? (
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        placeholder="Organization name..."
+                                                        value={newOrgName}
+                                                        onChange={(e) => setNewOrgName(e.target.value)}
+                                                        className="h-8 text-sm"
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                handleAddOrganization();
+                                                            }
+                                                            if (e.key === 'Escape') {
+                                                                setIsAddingOrg(false);
+                                                                setNewOrgName("");
+                                                            }
+                                                        }}
+                                                        autoFocus
+                                                    />
+                                                    <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization}>
+                                                        Add
+                                                    </Button>
+                                                    <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => {
+                                                        setIsAddingOrg(false);
+                                                        setNewOrgName("");
+                                                    }}>
+                                                        <X className="h-4 w-4"/>
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    className="w-full h-8 text-sm justify-start text-muted-foreground hover:text-foreground"
+                                                    onClick={() => setIsAddingOrg(true)}
+                                                >
+                                                    <Plus className="mr-2 h-4 w-4"/>
+                                                    Add new organization
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </Command>
+                                                    </PopoverContent>
+                                                </Popover>
+                                                <FormMessage/>
+                                            </FormItem>
+                                        )}
+                                    />
                                         </div>
                                     </div>
 
