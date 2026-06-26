@@ -1,753 +1,526 @@
-"use client";
+'use client';
 
-import React, {useCallback, useEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useState} from "react";
 import {useParams, useRouter} from "next/navigation";
-import {Button} from "@/components/ui/button";
-import {Card, CardContent} from "@/components/ui/card";
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue,} from "@/components/ui/select";
-import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,} from "@/components/ui/dropdown-menu";
-import {Label} from "@/components/ui/label";
-import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
-import {Copy, CopyCheck, Download, Edit, FileDown, FileText, MoreVertical, Trash2} from "lucide-react";
-import {InsertRemarkModal} from "@/app/(dashboard)/letters/[id]/insert-remark-modal";
-import {DeleteLetterAlert} from "@/app/(dashboard)/letters/[id]/delete-letter-alert";
 import {toast} from "sonner";
-import UpdateLetterModal from "@/app/(dashboard)/letters/[id]/update-letter-modal";
-import {DeleteRemarkAlert} from "@/app/(dashboard)/letters/[id]/delete-remark-alert";
-import UpdateRemarkModal from "@/app/(dashboard)/letters/[id]/update-remark-modal";
-import {downloadFileAsBlob} from "@/lib/download-file";
-import LetterFormat from "@/app/(dashboard)/letters/[id]/letter-format";
-import {formatDate, formatDateTime} from "@/lib/utils";
-import {ScrollArea} from "@/components/ui/scroll-area";
+import {ArrowLeft, Loader2, MoreVertical, Paperclip, Save, X} from "lucide-react";
+
+import {Button} from "@/components/ui/button";
+import {Card, CardContent, CardHeader} from "@/components/ui/card";
+import {Badge} from "@/components/ui/badge";
+import {Checkbox} from "@/components/ui/checkbox";
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
+import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from "@/components/ui/dropdown-menu";
+import {Separator} from "@/components/ui/separator";
 import api from "@/lib/api";
-import {DuplicateLetterAlert} from "@/app/(dashboard)/letters/[id]/duplicate-letter-alert";
 import {useAuthStore} from "@/store/auth-store";
+import {formatDate} from "@/lib/utils";
+import {InsertRemarkModal} from "@/app/(dashboard)/letters/[id]/insert-remark-modal";
 
-export default function LetterPage() {
-    const params = useParams();
+// ─── Interfaces ───────────────────────────────────────────────────────────────
+
+interface LetterDetail {
+    id: number;
+    code: string;
+    subject: string;
+    sender: string | null;
+    organization: {id: number; name: string} | null;
+    source: {id: number; name: string} | null;
+    email: string | null;
+    telephone: string | null;
+    other: string | null;
+    received_datetime: string;
+    create_datetime: string;
+    status: {id: number; name: string} | null;
+    status_id: number;
+    departments: {id: number; name: string}[];
+    assignees: {id: number; name: string}[];
+    attachments: {id: number; title: string; url: string}[];
+}
+
+interface Remark {
+    id: number;
+    content: string;
+    assignee: string | null;
+    department: string | null;
+    status: string | null;
+    create_datetime: string;
+}
+
+interface HistoryEntry {
+    id: number;
+    description: string;
+    username: string;
+    email: string;
+    create_datetime: string;
+    letter_id: number;
+}
+
+interface Department {id: number; name: string}
+interface Status {id: number; name: string}
+interface Assignee {id: number; name: string}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const getStatusClassName = (status: string): string => {
+    if (status === 'New') return 'bg-sky-100 text-sky-800 dark:bg-sky-800 dark:text-sky-200';
+    if (status === 'Assigned') return 'bg-orange-100 text-yellow-800 dark:bg-orange-800 dark:text-yellow-200';
+    if (status === 'In Progress') return 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200';
+    if (status === 'Rejected') return 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200';
+    return 'bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-200';
+};
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export default function LetterViewPage() {
+    const {id} = useParams<{id: string}>();
     const router = useRouter();
-    const letterId = params.id;
-
-    const [letterData, setLetterData] = useState(null);
-    const [departments, setDepartments] = useState([]);
-    const [statuses, setStatuses] = useState([]);
-    const [assignees, setAssignees] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [deleteAlert, setDeleteAlert] = useState({
-        isOpen: false,
-        letterCode: "",
-    });
-    const [deleteRemarkAlert, setDeleteRemarkAlert] = useState({
-        isOpen: false,
-        remarkId: "",
-    });
-    const [isDuplicateAlertOpen, setIsDuplicateAlertOpen] = useState(false);
-    const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
-    const [editingRemarkId, setEditingRemarkId] = useState<number | null>(null);
-    const contentRef = useRef<HTMLDivElement>(null);
     const {hasPermission} = useAuthStore();
 
-    const handlePDFDownload = () => {
-        if (!contentRef.current) return;
+    const [letter, setLetter] = useState<LetterDetail | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [allDepartments, setAllDepartments] = useState<Department[]>([]);
+    const [allStatuses, setAllStatuses] = useState<Status[]>([]);
+    const [allAssignees, setAllAssignees] = useState<Assignee[]>([]);
+    const [selectedDeptIds, setSelectedDeptIds] = useState<number[]>([]);
+    const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<number[]>([]);
+    const [selectedStatusId, setSelectedStatusId] = useState<number>(0);
+    const [isSaving, setIsSaving] = useState(false);
+    const [activeTab, setActiveTab] = useState<'remarks' | 'history'>('remarks');
+    const [remarks, setRemarks] = useState<Remark[]>([]);
+    const [remarksLoading, setRemarksLoading] = useState(false);
+    const [history, setHistory] = useState<HistoryEntry[]>([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
 
-        // Create a new window for printing
-        const printWindow = window.open('letter-preview', '_blank', 'width=800,height=600');
-        if (!printWindow) {
-            alert("Please allow pop-ups for this website to download the PDF.");
-            return;
-        }
+    // ── Fetch letter ──────────────────────────────────────────────────────────
 
-        // Get the content HTML and styles
-        const contentClone = contentRef.current.cloneNode(true) as HTMLElement;
-
-        // Create a complete HTML document for the print window
-        printWindow.document.write(`
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <title>${letterData.code || 'Document'}</title>
-                <style>
-                    @page {
-                        size: A4;
-                        margin: 2cm;
-                    }
-                
-                    html, body {
-                        margin: 0;
-                        padding: 0;
-                        height: 100%;
-                    }
-                
-                    .print-container {
-                        width: 100%;
-                        box-sizing: border-box;
-                        font-family: Arial, sans-serif;
-                        color: #000;
-                    }
-                
-                    @media print {
-                        .print-container {
-                            box-shadow: none;
-                        }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="print-container">
-                    ${contentClone.innerHTML}
-                </div>
-                <script>
-                    // Automatically print and close the window when ready
-                    window.onload = function() {
-                        setTimeout(function() {
-                            window.print();
-                            // Close the window after printing (or if print is cancelled)
-                            setTimeout(function() {
-                                window.close();
-                            }, 500);
-                        }, 500);
-                    };
-                </script>
-            </body>
-            </html>
-        `);
-
-        printWindow.document.close();
-    };
-
-    const fetchLetterData = useCallback(async () => {
+    const fetchLetter = useCallback(async () => {
         try {
-            const response = await api.get(`/v1/letter/${letterId}`);
-            const responseData = await response.data;
-            setLetterData(responseData.data);
-
+            setIsLoading(true);
+            const [letterRes, deptRes, statusRes, assigneeRes] = await Promise.all([
+                api.get(`/v1/letter/${id}`),
+                api.get('/v1/department/list'),
+                api.get('/v1/status/list'),
+                api.get('/v1/system_user/names'),
+            ]);
+            const data: LetterDetail = letterRes.data.data;
+            setLetter(data);
+            setSelectedDeptIds((data.departments || []).map(d => d.id));
+            setSelectedAssigneeIds((data.assignees || []).map(a => a.id));
+            setSelectedStatusId(data.status_id);
+            if (deptRes.data.success) setAllDepartments(deptRes.data.data);
+            if (statusRes.data.success) setAllStatuses(statusRes.data.data);
+            if (assigneeRes.data.success) setAllAssignees(assigneeRes.data.data);
         } catch (error) {
-            console.error("Error fetching letter data:", error);
-            toast.error(error.response?.data.message || 'Something went wrong. Please try again');
+            toast.error(error.response?.data?.message || 'Failed to load letter');
+        } finally {
+            setIsLoading(false);
         }
-    }, [letterId]);
+    }, [id]);
+
+    useEffect(() => { fetchLetter(); }, [fetchLetter]);
+
+    // ── Fetch remarks ─────────────────────────────────────────────────────────
+
+    const fetchRemarks = useCallback(async () => {
+        try {
+            setRemarksLoading(true);
+            const res = await api.get(`/v1/letter/${id}/remarks`);
+            setRemarks(res.data.data || []);
+        } catch {
+            toast.error('Failed to load remarks');
+        } finally {
+            setRemarksLoading(false);
+        }
+    }, [id]);
+
+    // ── Fetch history ─────────────────────────────────────────────────────────
+
+    const fetchHistory = useCallback(async () => {
+        try {
+            setHistoryLoading(true);
+            const res = await api.get(`/v1/letter/${id}/history`);
+            setHistory(res.data.data || []);
+        } catch {
+            toast.error('Failed to load history');
+        } finally {
+            setHistoryLoading(false);
+        }
+    }, [id]);
 
     useEffect(() => {
+        if (activeTab === 'remarks') fetchRemarks();
+        else fetchHistory();
+    }, [activeTab, fetchRemarks, fetchHistory]);
 
-        const fetchDropdownData = async () => {
-            try {
-                // Fetch departments
-                const deptResponse = await api.get('/v1/department/list');
-                const deptData = await deptResponse.data;
-                if (deptData.success) {
-                    setDepartments(deptData.data);
-                }
+    // ── Save assignment ───────────────────────────────────────────────────────
 
-                // Fetch statuses
-                const statusResponse = await api.get('/v1/status/list');
-                const statusData = await statusResponse.data;
-                if (statusData.success) {
-                    setStatuses(statusData.data);
-                }
-
-                // Fetch assignees
-                const assigneeResponse = await api.get('/v1/system_user/names');
-                const assigneeData = await assigneeResponse.data;
-                if (assigneeData.success) {
-                    setAssignees(assigneeData.data);
-                }
-            } catch (error) {
-                console.error("Error fetching dropdown data:", error);
-                toast.error(error.response?.data.message || 'Something went wrong. Please try again');
-            }
-        };
-
-        const loadAllData = async () => {
-            setLoading(true);
-            await Promise.all([fetchLetterData(), fetchDropdownData()]);
-            setLoading(false);
-        };
-
-        if (letterId) {
-            loadAllData().catch((error) => {
-                console.error("Unhandled error in loadAllData:", error);
+    const handleSave = async () => {
+        try {
+            setIsSaving(true);
+            await api.put(`/v1/letter/assignment/${id}`, {
+                
+                status_id: selectedStatusId,
+                department_ids: selectedDeptIds,
+                assignee_ids: selectedAssigneeIds,
             });
-        }
-    }, [letterId, fetchLetterData]);
-
-    const handleAttributeChange = async (attribute: string, nextId: number) => {
-        try {
-            const currentId = letterData[attribute]?.id || null;
-
-            const response = await api.patch(
-                `/v1/letter/${letterId}/${attribute}`,
-                {
-                    current_id: currentId,
-                    next_id: nextId
-                }
-            );
-
-            const data = await response.data;
-
-            toast.success(`Letter ${attribute} updated successfully`);
-            // Update local state to reflect the change
-            setLetterData((prevData: any) => {
-                const updatedData = {...prevData};
-
-                // Update the attribute with the new selection
-                const attributeMap = {
-                    'department': departments.find(d => d.id === nextId),
-                    'status': statuses.find(s => s.id === nextId),
-                    'assignee': assignees.find(a => a.id === nextId)
-                };
-
-                updatedData[attribute] = attributeMap[attribute];
-                return updatedData;
-            });
-            await fetchLetterData();
-
+            toast.success("Letter updated successfully");
+            fetchLetter();
         } catch (error) {
-            console.error(`Error updating ${attribute}:`, error);
-            toast.error(error.response?.data.message || 'Something went wrong. Please try again');
+            toast.error(error.response?.data?.message || 'Failed to save changes');
+        } finally {
+            setIsSaving(false);
         }
     };
 
-    const handleDelete = (letterCode: string) => {
-        setDeleteAlert({isOpen: true, letterCode: letterCode});
-    };
+    const toggleDept = (deptId: number) =>
+        setSelectedDeptIds(prev => prev.includes(deptId) ? prev.filter(d => d !== deptId) : [...prev, deptId]);
 
-    const handleDeleteConfirm = async () => {
-        try {
-            // Call the API to delete the letter
-            const response = await api.delete(`/v1/letter/${letterId}`);
-            const result = await response.data;
+    const toggleAssignee = (assigneeId: number) =>
+        setSelectedAssigneeIds(prev => prev.includes(assigneeId) ? prev.filter(a => a !== assigneeId) : [...prev, assigneeId]);
 
-            toast.success(result.message);
-            setDeleteAlert({isOpen: false, letterCode: ""});
-            router.replace('/letters');
+    // ── Render ────────────────────────────────────────────────────────────────
 
-        } catch (error) {
-            console.error("Error deleting letter:", error);
-            toast.error(error.response?.data.message || 'Something went wrong. Please try again');
-            setDeleteAlert({isOpen: false, letterCode: ""});
-        }
-    };
-
-    const handleRemarkDelete = (remarkId: string) => {
-        setDeleteRemarkAlert({isOpen: true, remarkId: remarkId});
-    };
-
-    const handleRemarkDeleteConfirm = async () => {
-        try {
-            // Call the API to delete the letter
-            const response = await api.delete(`/v1/letter/remark/${deleteRemarkAlert.remarkId}`);
-            const result = await response.data;
-
-            toast.success(result.message);
-            setDeleteRemarkAlert({isOpen: false, remarkId: ""});
-            await fetchLetterData();
-        } catch (error) {
-            console.error("Error deleting remark:", error);
-            toast.error(error.response?.data.message || 'Something went wrong. Please try again');
-            setDeleteAlert({isOpen: false, letterCode: ""});
-        }
-    };
-
-    const handleDuplicate = () => {
-        setIsDuplicateAlertOpen(true);
-    };
-
-    const handleDuplicateConfirm = async () => {
-        try {
-            const response = await api.get(`/v1/letter/${letterId}/duplicate`);
-            const result = await response.data;
-
-            toast.success(result.message, {
-                description: (
-                    <div className="flex items-center gap-2">
-                        <span>Letter Code:</span>
-                        <button
-                            onClick={() => router.push(`/letters/${result.data.id}`)}
-                            className="font-medium text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
-                        >
-                            {result.data.code}
-                        </button>
-                    </div>
-                ),
-                icon: <CopyCheck className="h-5 w-5"/>,
-                duration: 5000,
-            });
-        } catch (error) {
-            console.error("Error letter duplicating:", error);
-            toast.error(error.response?.data.message || 'Something went wrong. Please try again');
-        }
-    }
-
-    if (loading) {
+    if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-screen">
-                <div className="text-center">
-                    <div
-                        className="w-8 h-8 rounded-full border-4 border-t-primary border-r-transparent border-b-transparent border-l-transparent animate-spin mx-auto"></div>
-                    <p className="mt-2 text-sm text-muted-foreground">Loading letter data...</p>
+            <div className="flex items-center justify-center h-[60vh]">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary"/>
+                    <p className="text-sm text-muted-foreground">Loading letter...</p>
                 </div>
             </div>
         );
     }
 
-    if (!letterData) {
+    if (!letter) {
         return (
-            <div className="flex items-center justify-center min-h-screen">
-                <div className="text-center">
-                    <p className="text-lg font-medium">Letter not found</p>
-                    <p className="text-sm text-muted-foreground">The requested letter could not be loaded</p>
-                </div>
+            <div className="flex items-center justify-center h-[60vh]">
+                <p className="text-muted-foreground">Letter not found.</p>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200 space-y-6">
+        <div className="space-y-6">
+            {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold">Letter View</h1>
-                    <p className="text-muted-foreground">
-                        Review letter details, track history, and forward correspondence to the appropriate department
-                        or personnel for further action
+                    <p className="text-muted-foreground text-sm">
+                        Review letter details, track history, and forward correspondence to the appropriate department or personnel for further action
                     </p>
                 </div>
-                <div className="flex items-center gap-4">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="rounded-full">
-                                <MoreVertical className="h-5 w-5"/>
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem
-                                onClick={handlePDFDownload}
-                                className="flex items-center gap-2 cursor-pointer"
-                                disabled={!hasPermission('letter.download')}
-                            >
-                                <FileDown className="h-4 w-4"/>
-                                PDF Download
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="flex items-center gap-2 cursor-pointer"
-                                              onClick={handleDuplicate}
-                                              disabled={!hasPermission('letter.duplicate')}
-                            >
-                                <Copy className="h-4 w-4"/>
-                                Duplicate
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                                onClick={() => setIsUpdateModalOpen(true)}
-                                className="flex items-center gap-2 cursor-pointer"
-                                disabled={!hasPermission('letter.update')}>
-                                <Edit className="h-4 w-4"/>
-                                Update
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                                onClick={() => handleDelete(letterData.code)}
-                                className="flex items-center gap-2 cursor-pointer text-red-600 dark:text-red-400"
-                                disabled={!hasPermission('letter.delete')}
-                            >
-                                <Trash2 className="h-4 w-4"/>
-                                Delete
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                </div>
-                <UpdateLetterModal
-                    isOpen={isUpdateModalOpen}
-                    onCloseAction={async () => {
-                        setIsUpdateModalOpen(false);
-                        await fetchLetterData();
-                    }}
-                    letterData={letterData}
-                />
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4"/></Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => router.push('/letters')}>
+                            <ArrowLeft className="mr-2 h-4 w-4"/>Back to Letters
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
-            <div>
-                <div className="grid grid-cols-3 gap-6">
-                    <Card className="w-full col-span-2">
-                        <CardContent className="px-6">
-                            <div className="grid grid-cols-2 gap-8">
-                                {/* Left Column */}
-                                <div className="space-y-2">
-                                    {Object.entries({
-                                        Code: letterData.code,
-                                        Subject: letterData.subject,
-                                        Source: letterData.source?.name,
-                                        "Received Date": formatDate(letterData.received_datetime),
-                                        "System Date": formatDate(letterData.create_datetime),
-                                    }).map(([label, value]) => (
-                                        <div key={label} className="space-y-1">
-                                            <Label
-                                                className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                                {label}
-                                            </Label>
-                                            <p className="text-lg font-medium text-gray-900 dark:text-gray-100 break-words">
-                                                {value || "N/A"}
-                                            </p>
-                                        </div>
-                                    ))}
-                                </div>
 
-                                {/* Middle Column */}
-                                <div className="space-y-2">
-                                    {Object.entries({
-                                        Sender: letterData.sender,
-                                        Organization: letterData.organization?.name,
-                                        Email: letterData.email,
-                                        Telephone: letterData.telephone,
-
-                                    }).map(([label, value]) => (
-                                        <div key={label} className="space-y-1">
-                                            <Label
-                                                className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                                {label}
-                                            </Label>
-                                            <p className="text-lg font-medium text-gray-900 dark:text-gray-100 break-words">
-                                                {value || "N/A"}
-                                            </p>
-                                        </div>
-                                    ))}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
+                {/* ── Left panel ───────────────────────────────────────────── */}
+                <div className="space-y-4">
+                    {/* Letter details */}
+                    <Card>
+                        <CardContent className="pt-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-5">
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Code</p>
+                                    <p className="font-semibold mt-0.5">{letter.code}</p>
                                 </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Sender's Address</p>
+                                    <p className="font-semibold mt-0.5">{letter.sender || "—"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Subject / Content</p>
+                                    <p className="font-semibold mt-0.5">{letter.subject}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Sender / Organization</p>
+                                    <p className="font-semibold mt-0.5">{letter.organization?.name || "—"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Source</p>
+                                    <p className="font-semibold mt-0.5">{letter.source?.name || "—"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Email</p>
+                                    <p className="font-semibold mt-0.5">{letter.email || "N/A"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Received Date</p>
+                                    <p className="font-semibold mt-0.5">{formatDate(letter.received_datetime)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Telephone</p>
+                                    <p className="font-semibold mt-0.5">{letter.telephone || "N/A"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">System Date</p>
+                                    <p className="font-semibold mt-0.5">{formatDate(letter.create_datetime)}</p>
+                                </div>
+                                {letter.other && (
+                                    <div className="md:col-span-2">
+                                        <p className="text-sm text-muted-foreground">Cheque No / Money Order No</p>
+                                        <p className="font-semibold mt-0.5">{letter.other}</p>
+                                    </div>
+                                )}
                             </div>
+
+                            {/* Attachments */}
+                            {letter.attachments && letter.attachments.length > 0 && (
+                                <>
+                                    <Separator className="my-5"/>
+                                    <div>
+                                        <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
+                                            <Paperclip className="h-3.5 w-3.5"/>Attachments
+                                        </p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {letter.attachments.map(att => (
+                                                <a key={att.id} href={att.url} target="_blank" rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm hover:bg-muted transition-colors">
+                                                    <Paperclip className="h-3.5 w-3.5 text-muted-foreground"/>
+                                                    {att.title}
+                                                </a>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                         </CardContent>
                     </Card>
 
-                    {/*Right Column*/}
-                    <Card className="w-full col-span-1">
-                        <CardContent className="space-y-8 flex flex-col justify-center items-center h-full">
-                            {/*Right Column*/}
-                            <div className="space-y-6">
-                                {/* Department Dropdown */}
-                                <div className="space-y-2">
-                                    <Label className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                        Department
-                                    </Label>
-                                    <Select
-                                        defaultValue={letterData.department?.id?.toString()}
-                                        onValueChange={(value) => handleAttributeChange("department", parseInt(value))}
-                                        disabled={!hasPermission('letter.change_department')}
+                    {/* Remarks / History tabs */}
+                    <Card>
+                        <CardHeader className="pb-0 pt-5 px-5">
+                            <div className="flex items-center justify-between">
+                                <div className="flex gap-1 border rounded-lg p-1 bg-muted/30">
+                                    <button
+                                        onClick={() => setActiveTab('remarks')}
+                                        className={`px-5 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                                            activeTab === 'remarks'
+                                                ? 'bg-background shadow-sm text-foreground'
+                                                : 'text-muted-foreground hover:text-foreground'
+                                        }`}
                                     >
-                                        <SelectTrigger className="w-xs">
-                                            <SelectValue placeholder="Select Department">
-                                                {letterData.department?.name || "Select Department"}
-                                            </SelectValue>
-                                        </SelectTrigger>
-                                        <SelectContent className="w-xs">
-                                            {departments.map((dept) => (
-                                                <SelectItem key={dept.id} value={dept.id.toString()}>
-                                                    {dept.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                {/* Status Dropdown */}
-                                <div className="space-y-2">
-                                    <Label className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                        Status
-                                    </Label>
-                                    <Select
-                                        defaultValue={letterData.status?.id?.toString()}
-                                        onValueChange={(value) => handleAttributeChange("status", parseInt(value))}
-                                        disabled={!hasPermission('letter.change_status')}
+                                        Remarks
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('history')}
+                                        className={`px-5 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                                            activeTab === 'history'
+                                                ? 'bg-background shadow-sm text-foreground'
+                                                : 'text-muted-foreground hover:text-foreground'
+                                        }`}
                                     >
-                                        <SelectTrigger className="w-xs">
-                                            <SelectValue placeholder="Select Status">
-                                                {letterData.status?.name || "Select Status"}
-                                            </SelectValue>
-                                        </SelectTrigger>
-                                        <SelectContent className="w-xs">
-                                            {statuses.map((status) => (
-                                                <SelectItem key={status.id} value={status.id.toString()}>
-                                                    {status.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                        History
+                                    </button>
                                 </div>
-
-                                {/* Assignee Dropdown */}
-                                <div className="space-y-2">
-                                    <Label className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                        Assignee
-                                    </Label>
-                                    <Select
-                                        defaultValue={letterData.assignee?.id?.toString()}
-                                        onValueChange={(value) => handleAttributeChange("assignee", parseInt(value))}
-                                        disabled={!hasPermission('letter.assign')}
-                                    >
-                                        <SelectTrigger className="w-xs">
-                                            <SelectValue placeholder="Select Assignee">
-                                                {letterData.assignee?.name || "Select Assignee"}
-                                            </SelectValue>
-                                        </SelectTrigger>
-                                        <SelectContent className="w-xs">
-                                            {assignees.map((assignee) => (
-                                                <SelectItem key={assignee.id} value={assignee.id?.toString()}>
-                                                    {assignee.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                                {activeTab === 'remarks' && (
+                                    <InsertRemarkModal letter_id={id} onSuccess={fetchRemarks}/>
+                                )}
                             </div>
-                        </CardContent>
-                    </Card>
-                </div>
-                <Card className="w-full mt-6">
-                    <CardContent className="space-y-6">
-                        {/*Other*/}
-                        {letterData.other && (
-                            <div>
-                                <Label
-                                    className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-                                    Others
-                                </Label>
-                                <p className="text-gray-800 dark:text-gray-100 break-words whitespace-pre-line text-justify">
-                                    {letterData.other}
-                                </p>
-                            </div>
-                        )}
-                        {letterData.other && letterData.content && (<hr className="my-4 border-t border-gray-300"/>)}
-                        {/*Content*/}
-                        {letterData.content && (
-                            <div>
-                                <Label
-                                    className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-                                    Content
-                                </Label>
-                                <p className="text-gray-800 dark:text-gray-100 whitespace-pre-line break-words text-justify">
-                                    {letterData.content}
-                                </p>
-                            </div>
-                        )}
-                        {letterData.content && letterData.attachments && letterData.attachments.length > 0 && (
-                            <hr className="my-4 border-t border-gray-300"/>)}
-                        {/*  Letter Attachments  */}
-                        {letterData.attachments && letterData.attachments.length > 0 && (<div>
-                            <Label className="text-sm font-medium text-gray-500 dark:text-gray-300 mb-2">
-                                Attachments
-                            </Label>
-                            <div className="flex flex-wrap gap-4">
-                                {letterData.attachments && letterData.attachments.map((attachment) => (
-                                    <div key={attachment.id} className="flex">
-                                        <a
-                                            key={attachment.id}
-                                            href={attachment.url}
-                                            target="_blank"
-                                            download
-                                            className="flex gap-2 items-center text-sm text-primary hover:text-primary/80 transition-colors"
-                                        >
-                                            <FileText className="h-4 w-4"/>
-                                            <span>{attachment.title}</span>
-                                        </a>
-                                        <button
-                                            onClick={async () => {
-                                                await downloadFileAsBlob(attachment.url, attachment.title);
-                                            }}
-                                            aria-label={`Download ${attachment.title}`}
-                                            className="ml-2 text-gray-500 hover:text-primary transition-colors cursor-pointer"
-                                        >
-                                            <Download className="h-4 w-4"/>
-                                        </button>
+                        </CardHeader>
+                        <CardContent className="pt-4 px-5 pb-5">
+                            {activeTab === 'remarks' ? (
+                                remarksLoading ? (
+                                    <div className="flex justify-center py-10">
+                                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground"/>
                                     </div>
-                                ))}
-                            </div>
-                        </div>)}
-                    </CardContent>
-                </Card>
-
-                {/*Tabs Section*/}
-                <Card className="w-full mt-6">
-                    <CardContent className="space-y-8">
-                        <div className="">
-                            <Tabs defaultValue="remarks" className="w-full">
-                                <TabsList className="w-100 justify-start border-b dark:border-gray-700">
-                                    <TabsTrigger value="remarks" className="flex-1">Remarks</TabsTrigger>
-                                    <TabsTrigger value="history" className="flex-1">History</TabsTrigger>
-                                    {/*<TabsTrigger value="related" className="flex-1">Related</TabsTrigger>*/}
-                                </TabsList>
-
-                                <TabsContent value="remarks" className="mt-2">
-                                    <div className="relative space-y-4">
-                                        <div
-                                            className="absolute -top-13 right-0">
-                                            <InsertRemarkModal
-                                                letter_id={letterData.id}
-                                                onSuccess={fetchLetterData}
-                                            />
-                                        </div>
-                                        <ScrollArea
-                                            className="space-y-6 border rounded-md"
-                                            style={{height: letterData.remarks.length > 4 ? '600px' : 'auto'}}>
-                                            {!hasPermission('remark.view') ?
-                                                (
-                                                    <p className="py-15 text-center text-muted-foreground">Not enough
-                                                        permission to show remarks</p>
-                                                ) :
-                                                letterData.remarks && letterData.remarks.length > 0 ? (
-                                                    letterData.remarks.map((remark) => (
-                                                        <div
-                                                            key={remark.id}
-                                                            className="relative m-6 pl-6 border-l-2 border-gray-200 dark:border-gray-700"
-                                                        >
-                                                            <div
-                                                                className="absolute -left-2 top-0 w-4 h-4 rounded-full bg-primary"></div>
-                                                            <div className="space-y-3">
-                                                                <div className="flex justify-between items-start">
-                                                                    <div>
-                                                                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                                                                            ID: {remark.id}
-                                                                        </p>
-                                                                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                                                                            {remark.department || "No Department"} | {remark.assignee || "Unassigned"} | {remark.status || "No Status"}
-                                                                        </p>
-                                                                    </div>
-                                                                    <div
-                                                                        className="flex items-center gap-2">
-                                                                        <div
-                                                                            className="text-sm text-gray-500 dark:text-gray-400">
-                                                                            {formatDateTime(remark.create_datetime)}
-                                                                        </div>
-                                                                        <DropdownMenu>
-                                                                            <DropdownMenuTrigger asChild>
-                                                                                <Button variant="ghost" size="icon"
-                                                                                        className="rounded-full dark:hover:bg-gray-900">
-                                                                                    <MoreVertical className="h-5 w-5"/>
-                                                                                </Button>
-                                                                            </DropdownMenuTrigger>
-                                                                            <DropdownMenuContent className="w-48">
-                                                                                <DropdownMenuItem
-                                                                                    onClick={() => setEditingRemarkId(remark.id)}
-                                                                                    className="flex items-center gap-2 cursor-pointer"
-                                                                                    disabled={!hasPermission('remark.update')}
-                                                                                >
-                                                                                    <Edit className="h-4 w-4"/>
-                                                                                    Update
-                                                                                </DropdownMenuItem>
-                                                                                <DropdownMenuItem
-                                                                                    onClick={() => handleRemarkDelete(remark.id)}
-                                                                                    className="flex items-center gap-2 cursor-pointer text-red-600 dark:text-red-400"
-                                                                                    disabled={!hasPermission('remark.delete')}
-                                                                                >
-                                                                                    <Trash2 className="h-4 w-4"/>
-                                                                                    Delete
-                                                                                </DropdownMenuItem>
-                                                                            </DropdownMenuContent>
-                                                                        </DropdownMenu>
-                                                                        {editingRemarkId === remark.id && (
-                                                                            <UpdateRemarkModal
-                                                                                isOpen={true}
-                                                                                onCloseAction={async () => {
-                                                                                    setEditingRemarkId(null);
-                                                                                    await fetchLetterData();
-                                                                                }}
-                                                                                remarkData={remark}
-                                                                            />
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                                <p className="text-gray-900 dark:text-gray-100 text-justify">{remark.content}</p>
-                                                                <div className="flex flex-wrap gap-4">
-                                                                    {remark.attachments && remark.attachments.map((attachment) => (
-                                                                        <div key={attachment.id} className="flex">
-                                                                            <a
-                                                                                key={attachment.id}
-                                                                                href={attachment.url}
-                                                                                target="_blank"
-                                                                                download
-                                                                                className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors"
-                                                                            >
-                                                                                <FileText className="h-4 w-4"/>
-                                                                                <span>{attachment.title}</span>
-                                                                            </a>
-                                                                            <button
-                                                                                onClick={async () => {
-                                                                                    await downloadFileAsBlob(attachment.url, attachment.title);
-                                                                                }}
-                                                                                aria-label={`Download ${attachment.title}`}
-                                                                                className="ml-2 text-gray-500 hover:text-primary transition-colors cursor-pointer"
-                                                                            >
-                                                                                <Download className="h-4 w-4"/>
-                                                                            </button>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ))
-                                                ) : (
-                                                    <p className="py-15 text-center text-muted-foreground">No remarks
-                                                        found</p>
-                                                )}
-                                        </ScrollArea>
+                                ) : remarks.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-10 text-center">
+                                        <p className="text-sm text-muted-foreground">No remarks yet</p>
                                     </div>
-                                </TabsContent>
-
-                                <TabsContent value="history" className="mt-2">
-                                    <ScrollArea
-                                        className="border rounded-md"
-                                        style={{height: letterData.history.length > 4 ? '600px' : 'auto'}}
-                                    >
-                                        <div className="space-y-4">
-                                            {!hasPermission('letter.history') ?
-                                                (
-                                                    <p className="py-15 text-center text-muted-foreground">Not enough
-                                                        permission to show history</p>
-                                                ) :
-                                                letterData.history && letterData.history.length > 0 ? (
-                                                    letterData.history.map((item, index) => (
-                                                        <div
-                                                            key={index}
-                                                            className="relative m-6 pl-6 border-l-2 border-gray-200 dark:border-gray-700"
-                                                        >
-                                                            <div
-                                                                className="absolute -left-2 top-0 w-4 h-4 rounded-full bg-primary"></div>
-                                                            <div className="space-y-1">
-                                                                <p className="text-sm text-gray-500 dark:text-gray-400">
-                                                                    {formatDateTime(item.create_datetime)}
-                                                                </p>
-                                                                <p className="text-gray-900 dark:text-gray-100">{item.description}</p>
-                                                                <p className="text-sm text-gray-500 dark:text-gray-400">
-                                                                    by {item.username}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    ))
-                                                ) : (
-                                                    <div className="py-15">
-                                                        <p className="text-center text-muted-foreground">No history
-                                                            found</p>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {remarks.map(remark => (
+                                            <div key={remark.id} className="border rounded-lg p-4 space-y-2">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                                                        {/* <span className="font-medium text-foreground">
+                                                            ID: {remark.id}
+                                                        </span> */}
+                                                        {remark.department && (
+                                                            <span>{remark.department}</span>
+                                                        )}
+                                                        {remark.assignee && (
+                                                            <span>| {remark.assignee}</span>
+                                                        )}
+                                                        {remark.status && (
+                                                            <span>| {remark.status}</span>
+                                                        )}
                                                     </div>
-                                                )}
+                                                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                                        {formatDate(remark.create_datetime)}
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm whitespace-pre-wrap">{remark.content}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )
+                            ) : (
+                                historyLoading ? (
+                                    <div className="flex justify-center py-10">
+                                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground"/>
+                                    </div>
+                                ) : history.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-10">
+                                        <p className="text-sm text-muted-foreground">No history available</p>
+                                    </div>
+                                ) : (
+                                    <div className="relative pl-6 space-y-0">
+                                        {/* Timeline line */}
+                                        <div className="absolute left-2 top-2 bottom-2 w-px bg-border"/>
+
+                                        {history.map((entry) => (
+                                            <div key={entry.id} className="relative pb-6 last:pb-0">
+                                                {/* Timeline dot */}
+                                                <div className="absolute -left-4 top-1 h-3 w-3 rounded-full bg-primary border-2 border-background ring-1 ring-border"/>
+
+                                                <div className="pl-4">
+                                                    <p className="text-xs text-muted-foreground mb-1">
+                                                        {formatDate(entry.create_datetime)}
+                                                    </p>
+                                                    <p className="text-sm font-medium">{entry.description}</p>
+                                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                                        by {entry.username}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* ── Right panel ───────────────────────────────────────────── */}
+                <div className="space-y-4">
+                    <Card>
+                        <CardContent className="pt-6 space-y-5">
+                            {/* Status */}
+                            <div className="space-y-2">
+                                <p className="text-sm font-medium">Status</p>
+                                <Select
+                                    value={selectedStatusId ? selectedStatusId.toString() : ""}
+                                    onValueChange={(v) => setSelectedStatusId(parseInt(v) || 0)}
+                                    disabled={!hasPermission('letter.update')}
+                                >
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select Status"/>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {allStatuses.map(s => (
+                                            <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {letter.status && (
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusClassName(letter.status.name)}`}>
+                                        Current: {letter.status.name}
+                                    </span>
+                                )}
+                            </div>
+
+                            <Separator/>
+
+                            {/* Departments */}
+                            <div className="space-y-2">
+                                <p className="text-sm font-medium">Departments</p>
+                                {selectedDeptIds.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mb-2">
+                                        {selectedDeptIds.map(deptId => {
+                                            const dept = allDepartments.find(d => d.id === deptId);
+                                            return dept ? (
+                                                <Badge key={deptId} variant="secondary" className="text-xs gap-1">
+                                                    {dept.name}
+                                                    {hasPermission('letter.update') && (
+                                                        <button onClick={() => toggleDept(deptId)} className="ml-0.5 hover:text-destructive">
+                                                            <X className="h-3 w-3"/>
+                                                        </button>
+                                                    )}
+                                                </Badge>
+                                            ) : null;
+                                        })}
+                                    </div>
+                                )}
+                                <div className="border rounded-md p-3 grid grid-cols-1 gap-2 max-h-44 overflow-y-auto">
+                                    {allDepartments.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground">No departments available</p>
+                                    ) : allDepartments.map(dept => (
+                                        <div key={dept.id} className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id={`dept-${dept.id}`}
+                                                checked={selectedDeptIds.includes(dept.id)}
+                                                onCheckedChange={() => toggleDept(dept.id)}
+                                                disabled={!hasPermission('letter.update')}
+                                            />
+                                            <label htmlFor={`dept-${dept.id}`} className="text-sm cursor-pointer leading-tight">
+                                                {dept.name}
+                                            </label>
                                         </div>
-                                    </ScrollArea>
-                                </TabsContent>
-                            </Tabs>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-            <DeleteLetterAlert
-                isOpen={deleteAlert.isOpen}
-                onClose={() => setDeleteAlert({isOpen: false, letterCode: ""})}
-                onConfirm={handleDeleteConfirm}
-                letterCode={deleteAlert.letterCode}
-            />
-            <DeleteRemarkAlert
-                isOpen={deleteRemarkAlert.isOpen}
-                onClose={() => setDeleteRemarkAlert({isOpen: false, remarkId: ""})}
-                onConfirm={handleRemarkDeleteConfirm}
-                remarkId={deleteRemarkAlert.remarkId}
-            />
-            <DuplicateLetterAlert
-                isOpen={isDuplicateAlertOpen}
-                onClose={() => setIsDuplicateAlertOpen(false)}
-                onConfirm={handleDuplicateConfirm}
-                letterCode={letterData.code}
-            />
-            <div className="hidden">
-                <LetterFormat _ref={contentRef} letterData={letterData}/>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <Separator/>
+
+                            {/* Assignees */}
+                            <div className="space-y-2">
+                                <p className="text-sm font-medium">Assignees</p>
+                                {selectedAssigneeIds.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mb-2">
+                                        {selectedAssigneeIds.map(assigneeId => {
+                                            const assignee = allAssignees.find(a => a.id === assigneeId);
+                                            return assignee ? (
+                                                <Badge key={assigneeId} variant="secondary" className="text-xs gap-1">
+                                                    {assignee.name}
+                                                    {hasPermission('letter.update') && (
+                                                        <button onClick={() => toggleAssignee(assigneeId)} className="ml-0.5 hover:text-destructive">
+                                                            <X className="h-3 w-3"/>
+                                                        </button>
+                                                    )}
+                                                </Badge>
+                                            ) : null;
+                                        })}
+                                    </div>
+                                )}
+                                <div className="border rounded-md p-3 grid grid-cols-1 gap-2 max-h-44 overflow-y-auto">
+                                    {allAssignees.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground">No assignees available</p>
+                                    ) : allAssignees.map(a => (
+                                        <div key={a.id} className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id={`assignee-${a.id}`}
+                                                checked={selectedAssigneeIds.includes(a.id)}
+                                                onCheckedChange={() => toggleAssignee(a.id)}
+                                                disabled={!hasPermission('letter.update')}
+                                            />
+                                            <label htmlFor={`assignee-${a.id}`} className="text-sm cursor-pointer leading-tight">
+                                                {a.name}
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Save */}
+                            {hasPermission('letter.update') && (
+                                <Button className="w-full" onClick={handleSave} disabled={isSaving}>
+                                    {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</> : <><Save className="mr-2 h-4 w-4"/>Save Changes</>}
+                                </Button>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
         </div>
     );

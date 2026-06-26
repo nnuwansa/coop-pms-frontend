@@ -1,7 +1,7 @@
 'use client';
 
 import {useCallback, useEffect, useState} from "react";
-import Link from "next/link";
+import {useRouter} from "next/navigation";
 import {toast} from "sonner";
 import {
     ChevronLeft,
@@ -11,6 +11,7 @@ import {
     CircleAlert,
     Clock,
     Download,
+    Eye,
     Filter,
     MailCheck,
     MailPlus,
@@ -138,6 +139,7 @@ const initialColumnVisibility: ColumnVisibility = {
 };
 
 export default function LetterDashboard() {
+    const router = useRouter();
     const [showExportModal, setShowExportModal] = useState<boolean>(false);
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [pageSize, setPageSize] = useState<number>(10);
@@ -160,7 +162,6 @@ export default function LetterDashboard() {
     useEffect(() => {
         const fetchDropdownData = async (): Promise<void> => {
             try {
-                // Fetch all data in parallel
                 const [deptResponse, statusResponse, assigneeResponse, orgResponse] = await Promise.all([
                     api.get('/v1/department/list'),
                     api.get('/v1/status/list'),
@@ -168,7 +169,6 @@ export default function LetterDashboard() {
                     api.get('/v1/organization/list')
                 ]);
 
-                // Process all responses in parallel
                 const [deptData, statusData, assigneeData, orgData] = await Promise.all([
                     deptResponse.data,
                     statusResponse.data,
@@ -176,7 +176,6 @@ export default function LetterDashboard() {
                     orgResponse.data
                 ]);
 
-                // Update state with the results
                 if (deptData.success) setDepartments(deptData.data);
                 if (statusData.success) setStatuses(statusData.data);
                 if (assigneeData.success) setAssignees(assigneeData.data);
@@ -193,13 +192,11 @@ export default function LetterDashboard() {
         );
     }, []);
 
-    // Create a function to fetch letter statuses
     const fetchLetterStats = useCallback(async () => {
         const response = await api.get('/v1/letter/stats/');
         return await response.data;
     }, []);
 
-    // Move fetchLettersFromApi outside the loadLetters function
     const fetchLettersFromApi = useCallback(
         async (
             page: number,
@@ -209,7 +206,6 @@ export default function LetterDashboard() {
             const response = await api.post(
                 `/v1/letter/list?page=${page}&page_size=${pageSize}`, filters
             );
-
             return await response.data;
         }, []);
 
@@ -230,13 +226,11 @@ export default function LetterDashboard() {
         try {
             setIsLoading(true);
 
-            // Call both APIs in parallel using Promise.all
             const [lettersResponse, statsResponse] = await Promise.all([
                 fetchLettersFromApi(currentPage, pageSize, filters),
                 fetchLetterStats()
             ]);
 
-            // Set the results to their respective state variables
             setLetters(lettersResponse.data);
             setTotalPages(lettersResponse.total_pages || 0);
             setTotalRows(lettersResponse.total || 0);
@@ -255,7 +249,6 @@ export default function LetterDashboard() {
         );
     }, [loadLetters, refreshTrigger]);
 
-    // Reset to page 1 when filters change
     useEffect(() => {
         setCurrentPage(1);
     }, [debouncedFilters]);
@@ -298,32 +291,21 @@ export default function LetterDashboard() {
     };
 
     const getStatusClassName = (status: string): string => {
-        if (status === 'New') {
-            return 'bg-sky-100 text-sky-800 dark:bg-sky-800 dark:text-sky-200';
-        }
-        if (status === 'Assigned') {
-            return 'bg-orange-100 text-yellow-800 dark:bg-orange-800 dark:text-yellow-200';
-        }
-        if (status === 'In Progress') {
-            return 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200';
-        }
-        if (status === 'Rejected') {
-            return 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200';
-        }
-        if (status === null) {
-            return 'bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200';
-        }
+        if (status === 'New') return 'bg-sky-100 text-sky-800 dark:bg-sky-800 dark:text-sky-200';
+        if (status === 'Assigned') return 'bg-orange-100 text-yellow-800 dark:bg-orange-800 dark:text-yellow-200';
+        if (status === 'In Progress') return 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200';
+        if (status === 'Rejected') return 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200';
+        if (status === null) return 'bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200';
         return 'bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-200';
     };
 
-    // handle stats card
     const handleStatsClick = (status: { status_id: any; }) => {
         !showFilters && setShowFilters(true);
         setInputFilters((prev) => ({
             ...prev,
             status_id: status.status_id,
-        }))
-    }
+        }));
+    };
 
     return (
         <div className="space-y-6">
@@ -335,18 +317,17 @@ export default function LetterDashboard() {
                         across departments and organizations
                     </p>
                 </div>
-                {!isLoading && <InsertLetterModal
-    organizations={organizations}
-    onOrganizationAdded={(newOrg) => setOrganizations(prev => [...prev, newOrg])}
-    onSuccess={handleRefresh}
-/>}
+                <InsertLetterModal
+                    organizations={organizations}
+                    onOrganizationAdded={(newOrg) => setOrganizations(prev => [...prev, newOrg])}
+                    onSuccess={handleRefresh}
+                />
             </div>
 
+            {/* Stats Cards */}
             <div className="grid gap-6 md:grid-cols-4">
-                <Card
-                    className="cursor-pointer hover:shadow-md transition-shadow duration-200"
-                    onClick={() => handleStatsClick({status_id: 1})}
-                >
+                <Card className="cursor-pointer hover:shadow-md transition-shadow duration-200"
+                    onClick={() => handleStatsClick({status_id: 1})}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">New</CardTitle>
                         <MailPlus className="h-4 w-4 text-blue-600"/>
@@ -359,17 +340,14 @@ export default function LetterDashboard() {
                             </div>
                         ) : (
                             <>
-                                <div
-                                    className="text-2xl font-bold">{letterStats.find(stat => stat.status_id === 1)?.count ?? 0}</div>
+                                <div className="text-2xl font-bold">{letterStats.find(stat => stat.status_id === 1)?.count ?? 0}</div>
                                 <p className="text-xs text-muted-foreground">Newly Created</p>
                             </>
                         )}
                     </CardContent>
                 </Card>
-                <Card
-                    className="cursor-pointer hover:shadow-md transition-shadow duration-200"
-                    onClick={() => handleStatsClick({status_id: 2})}
-                >
+                <Card className="cursor-pointer hover:shadow-md transition-shadow duration-200"
+                    onClick={() => handleStatsClick({status_id: 2})}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Assigned</CardTitle>
                         <MailCheck className="h-4 w-4 text-amber-600"/>
@@ -382,17 +360,14 @@ export default function LetterDashboard() {
                             </div>
                         ) : (
                             <>
-                                <div
-                                    className="text-2xl font-bold">{letterStats.find(stat => stat.status_id === 2)?.count ?? 0}</div>
+                                <div className="text-2xl font-bold">{letterStats.find(stat => stat.status_id === 2)?.count ?? 0}</div>
                                 <p className="text-xs text-muted-foreground">Just Received</p>
                             </>
                         )}
                     </CardContent>
                 </Card>
-                <Card
-                    className="cursor-pointer hover:shadow-md transition-shadow duration-200"
-                    onClick={() => handleStatsClick({status_id: 3})}
-                >
+                <Card className="cursor-pointer hover:shadow-md transition-shadow duration-200"
+                    onClick={() => handleStatsClick({status_id: 3})}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">In Progress</CardTitle>
                         <Clock className="h-4 w-4 text-green-600"/>
@@ -405,8 +380,7 @@ export default function LetterDashboard() {
                             </div>
                         ) : (
                             <>
-                                <div
-                                    className="text-2xl font-bold">{letterStats.find(stat => stat.status_id === 3)?.count ?? 0}</div>
+                                <div className="text-2xl font-bold">{letterStats.find(stat => stat.status_id === 3)?.count ?? 0}</div>
                                 <p className="text-xs text-muted-foreground">Work Ongoing</p>
                             </>
                         )}
@@ -414,10 +388,11 @@ export default function LetterDashboard() {
                 </Card>
                 <Card
                     className={`cursor-pointer hover:shadow-md transition-shadow duration-200 ${
-                        letterStats.find(stat => stat.status_id === 4)?.count > 0 ? "bg-rose-300 dark:bg-rose-800 animate-pulse border-red-200" : ""
+                        letterStats.find(stat => stat.status_id === 4)?.count > 0
+                            ? "bg-rose-300 dark:bg-rose-800 animate-pulse border-red-200"
+                            : ""
                     }`}
-                    onClick={() => handleStatsClick({status_id: 4})}
-                >
+                    onClick={() => handleStatsClick({status_id: 4})}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Rejected</CardTitle>
                         <CircleAlert className="h-4 w-4 text-red-600"/>
@@ -430,87 +405,80 @@ export default function LetterDashboard() {
                             </div>
                         ) : (
                             <>
-                                <div
-                                    className="text-2xl font-bold">{letterStats.find(stat => stat.status_id === 4)?.count ?? 0}</div>
+                                <div className="text-2xl font-bold">{letterStats.find(stat => stat.status_id === 4)?.count ?? 0}</div>
                                 <p className="text-xs text-muted-foreground">Request Denied</p>
                             </>
                         )}
                     </CardContent>
                 </Card>
             </div>
+
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div>
                         <CardTitle>Letters List</CardTitle>
                         <CardDescription>A comprehensive list of all letters in the system</CardDescription>
                     </div>
-                    {!isLoading && <div className="flex space-x-2">
-                        <Button
-                            size="icon"
-                            variant="outline"
-                            onClick={handleRefresh}
-                            aria-label="Refresh"
-                        >
-                            <RotateCw className="h-4 w-4"/>
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={handleFilters}
-                            className={showFilters ? "bg-gray-100 dark:bg-gray-900" : ""}
-                            aria-label="Filter"
-                        >
-                            <Filter className="h-4 w-4"/>
-                        </Button>
-                        <Button
-                            variant="outline"
-                            onClick={() => setShowExportModal(true)}
-                            aria-label="Export"
-                            disabled={!hasPermission('letter.xdownload')}
-                        >
-                            <Download className="h-4 w-4"/>
-                        </Button>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="outline" aria-label="Column Settings">
-                                    <Settings2 className="h-4 w-4"/>
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                {Object.entries({
-                                    id: "ID",
-                                    code: "Code",
-                                    title: "Title",
-                                    organization: "Organization",
-                                    department: "Department",
-                                    assignee: "Assignee",
-                                    date: "Received Date",
-                                    status: "Status",
-                                    other: "Other",
-                                }).map(([key, label]) => (
-                                    <DropdownMenuCheckboxItem
-                                        key={key}
-                                        checked={columnVisibility[key as keyof ColumnVisibility]}
-                                        onCheckedChange={(checked) =>
-                                            setColumnVisibility((prev) => ({
-                                                ...prev,
-                                                [key]: checked,
-                                            }))
-                                        }
-                                    >
-                                        {label}
-                                    </DropdownMenuCheckboxItem>
-                                ))}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    </div>}
+                    {!isLoading && (
+                        <div className="flex space-x-2">
+                            <Button size="icon" variant="outline" onClick={handleRefresh} aria-label="Refresh">
+                                <RotateCw className="h-4 w-4"/>
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={handleFilters}
+                                className={showFilters ? "bg-gray-100 dark:bg-gray-900" : ""}
+                                aria-label="Filter"
+                            >
+                                <Filter className="h-4 w-4"/>
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={() => setShowExportModal(true)}
+                                aria-label="Export"
+                                disabled={!hasPermission('letter.xdownload')}
+                            >
+                                <Download className="h-4 w-4"/>
+                            </Button>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" aria-label="Column Settings">
+                                        <Settings2 className="h-4 w-4"/>
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    {Object.entries({
+                                        id: "ID",
+                                        code: "Code",
+                                        title: "Title",
+                                        organization: "Sender/Organization of the letter",
+                                        department: "Department",
+                                        assignee: "Assignee",
+                                        date: "Received Date",
+                                        status: "Status",
+                                        other: "Other",
+                                    }).map(([key, label]) => (
+                                        <DropdownMenuCheckboxItem
+                                            key={key}
+                                            checked={columnVisibility[key as keyof ColumnVisibility]}
+                                            onCheckedChange={(checked) =>
+                                                setColumnVisibility((prev) => ({...prev, [key]: checked}))
+                                            }
+                                        >
+                                            {label}
+                                        </DropdownMenuCheckboxItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+                    )}
                 </CardHeader>
                 <CardContent>
                     <div className="space-y-4">
                         <div>
                             {showFilters && (
-                                <div
-                                    className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-4">
                                     {columnVisibility.id && (
                                         <div className="relative">
                                             <Input
@@ -525,71 +493,50 @@ export default function LetterDashboard() {
                                                 aria-label="Search by ID"
                                             />
                                             {inputFilters.id !== 0 && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
+                                                <Button variant="ghost" size="icon"
                                                     className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                    onClick={() => clearFilter('id')}
-                                                    aria-label="Clear ID filter"
-                                                >
+                                                    onClick={() => clearFilter('id')} aria-label="Clear ID filter">
                                                     <X className="h-4 w-4"/>
                                                 </Button>
                                             )}
                                         </div>
                                     )}
-
                                     {columnVisibility.code && (
                                         <div className="relative">
                                             <Input
                                                 placeholder="Search by Code..."
                                                 value={inputFilters.code}
-                                                onChange={(e) => setInputFilters(prev => ({
-                                                    ...prev,
-                                                    code: e.target.value
-                                                }))}
+                                                onChange={(e) => setInputFilters(prev => ({...prev, code: e.target.value}))}
                                                 className="w-full"
                                                 aria-label="Search by Code"
                                             />
                                             {inputFilters.code && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
+                                                <Button variant="ghost" size="icon"
                                                     className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                    onClick={() => clearFilter('code')}
-                                                    aria-label="Clear Code filter"
-                                                >
+                                                    onClick={() => clearFilter('code')} aria-label="Clear Code filter">
                                                     <X className="h-4 w-4"/>
                                                 </Button>
                                             )}
                                         </div>
                                     )}
-
                                     {columnVisibility.title && (
                                         <div className="relative">
                                             <Input
                                                 placeholder="Search by Title..."
                                                 value={inputFilters.subject}
-                                                onChange={(e) => setInputFilters(prev => ({
-                                                    ...prev,
-                                                    subject: e.target.value
-                                                }))}
+                                                onChange={(e) => setInputFilters(prev => ({...prev, subject: e.target.value}))}
                                                 className="w-full"
                                                 aria-label="Search by Title"
                                             />
                                             {inputFilters.subject && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
+                                                <Button variant="ghost" size="icon"
                                                     className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                    onClick={() => clearFilter('subject')}
-                                                    aria-label="Clear Title filter"
-                                                >
+                                                    onClick={() => clearFilter('subject')} aria-label="Clear Title filter">
                                                     <X className="h-4 w-4"/>
                                                 </Button>
                                             )}
                                         </div>
                                     )}
-
                                     {columnVisibility.organization && (
                                         <div className="relative">
                                             <Select
@@ -597,33 +544,25 @@ export default function LetterDashboard() {
                                                 onValueChange={(value) => setInputFilters((prev) => ({
                                                     ...prev,
                                                     organization_id: parseInt(value) || 0,
-                                                }))}
-                                            >
+                                                }))}>
                                                 <SelectTrigger className="w-full">
-                                                    <SelectValue placeholder="Select an Organization"/>
+                                                    <SelectValue placeholder="Select a Sender/Organization"/>
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     {organizations.map((org) => (
-                                                        <SelectItem key={org.id} value={org.id.toString()}>
-                                                            {org.name}
-                                                        </SelectItem>
+                                                        <SelectItem key={org.id} value={org.id.toString()}>{org.name}</SelectItem>
                                                     ))}
                                                 </SelectContent>
                                             </Select>
                                             {inputFilters.organization_id !== 0 && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
+                                                <Button variant="ghost" size="icon"
                                                     className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                    onClick={() => clearFilter('organization_id')}
-                                                    aria-label="Clear Organization filter"
-                                                >
+                                                    onClick={() => clearFilter('organization_id')}>
                                                     <X className="h-4 w-4"/>
                                                 </Button>
                                             )}
                                         </div>
                                     )}
-
                                     {columnVisibility.department && (
                                         <div className="relative">
                                             <Select
@@ -631,33 +570,25 @@ export default function LetterDashboard() {
                                                 onValueChange={(value) => setInputFilters((prev) => ({
                                                     ...prev,
                                                     department_id: parseInt(value) || 0,
-                                                }))}
-                                            >
+                                                }))}>
                                                 <SelectTrigger className="w-full">
                                                     <SelectValue placeholder="Select a Department"/>
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     {departments.map((dept) => (
-                                                        <SelectItem key={dept.id} value={dept.id.toString()}>
-                                                            {dept.name}
-                                                        </SelectItem>
+                                                        <SelectItem key={dept.id} value={dept.id.toString()}>{dept.name}</SelectItem>
                                                     ))}
                                                 </SelectContent>
                                             </Select>
                                             {inputFilters.department_id !== 0 && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
+                                                <Button variant="ghost" size="icon"
                                                     className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                    onClick={() => clearFilter('department_id')}
-                                                    aria-label="Clear Department filter"
-                                                >
+                                                    onClick={() => clearFilter('department_id')}>
                                                     <X className="h-4 w-4"/>
                                                 </Button>
                                             )}
                                         </div>
                                     )}
-
                                     {columnVisibility.assignee && (
                                         <div className="relative">
                                             <Select
@@ -665,33 +596,25 @@ export default function LetterDashboard() {
                                                 onValueChange={(value) => setInputFilters((prev) => ({
                                                     ...prev,
                                                     assignee_id: parseInt(value) || 0,
-                                                }))}
-                                            >
+                                                }))}>
                                                 <SelectTrigger className="w-full">
                                                     <SelectValue placeholder="Select an Assignee"/>
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     {assignees.map((a) => (
-                                                        <SelectItem key={a.id} value={a.id.toString()}>
-                                                            {a.name}
-                                                        </SelectItem>
+                                                        <SelectItem key={a.id} value={a.id.toString()}>{a.name}</SelectItem>
                                                     ))}
                                                 </SelectContent>
                                             </Select>
                                             {inputFilters.assignee_id !== 0 && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
+                                                <Button variant="ghost" size="icon"
                                                     className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                    onClick={() => clearFilter('assignee_id')}
-                                                    aria-label="Clear Assignee filter"
-                                                >
+                                                    onClick={() => clearFilter('assignee_id')}>
                                                     <X className="h-4 w-4"/>
                                                 </Button>
                                             )}
                                         </div>
                                     )}
-
                                     {columnVisibility.date && (
                                         <div>
                                             <DatePickerWithRange
@@ -707,7 +630,6 @@ export default function LetterDashboard() {
                                             />
                                         </div>
                                     )}
-
                                     {columnVisibility.status && (
                                         <div className="relative">
                                             <Select
@@ -715,53 +637,38 @@ export default function LetterDashboard() {
                                                 onValueChange={(value) => setInputFilters((prev) => ({
                                                     ...prev,
                                                     status_id: parseInt(value) || 0,
-                                                }))}
-                                            >
+                                                }))}>
                                                 <SelectTrigger className="w-full">
                                                     <SelectValue placeholder="Select a Status"/>
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     {statuses.map((s) => (
-                                                        <SelectItem key={s.id} value={s.id.toString()}>
-                                                            {s.name}
-                                                        </SelectItem>
+                                                        <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
                                                     ))}
                                                 </SelectContent>
                                             </Select>
                                             {inputFilters.status_id !== 0 && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
+                                                <Button variant="ghost" size="icon"
                                                     className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                    onClick={() => clearFilter('status_id')}
-                                                    aria-label="Clear Status filter"
-                                                >
+                                                    onClick={() => clearFilter('status_id')}>
                                                     <X className="h-4 w-4"/>
                                                 </Button>
                                             )}
                                         </div>
                                     )}
-
                                     {columnVisibility.other && (
                                         <div className="relative">
                                             <Input
-                                                placeholder="Search by Other..."
+                                                placeholder="Search by Cheque no /Money Order No..."
                                                 value={inputFilters.other}
-                                                onChange={(e) => setInputFilters(prev => ({
-                                                    ...prev,
-                                                    other: e.target.value
-                                                }))}
+                                                onChange={(e) => setInputFilters(prev => ({...prev, other: e.target.value}))}
                                                 className="w-full"
                                                 aria-label="Search by Other"
                                             />
                                             {inputFilters.other && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
+                                                <Button variant="ghost" size="icon"
                                                     className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                    onClick={() => clearFilter('other')}
-                                                    aria-label="Clear Other filter"
-                                                >
+                                                    onClick={() => clearFilter('other')}>
                                                     <X className="h-4 w-4"/>
                                                 </Button>
                                             )}
@@ -769,140 +676,112 @@ export default function LetterDashboard() {
                                     )}
                                 </div>
                             )}
+
                             <div className="rounded-md border">
                                 <Table className="overflow-x-auto min-w-max w-full mb-2">
-                                   <TableHeader>
+                                    <TableHeader>
                                         <TableRow>
-                                            {columnVisibility.id && (
-                                                <TableHead className="w-[50px] text-center">ID</TableHead>
-                                            )}
-                                            {columnVisibility.code && (
-                                                <TableHead className="w-[150px]">Code</TableHead>
-                                            )}
-                                            {columnVisibility.title && (
-                                                <TableHead className="w-[250px]">Title</TableHead>
-                                            )}
-                                            {columnVisibility.organization && (
-                                                <TableHead className="w-[250px]">Organization</TableHead>
-                                            )}
-                                            {columnVisibility.department && (
-                                                <TableHead className="w-[250px]">Department</TableHead>
-                                            )}
-                                            {columnVisibility.assignee && (
-                                                <TableHead className="w-[150px]">Assignee</TableHead>
-                                            )}
-                                            {columnVisibility.date && (
-                                                <TableHead className="w-[150px]">Received Date</TableHead>
-                                            )}
-                                            {columnVisibility.status && (
-                                                <TableHead className="w-[150px] text-center">Status</TableHead>
-                                            )}
-                                            {columnVisibility.other && (
-                                                <TableHead className="w-[250px]">Other</TableHead>
-                                            )}
+                                            {columnVisibility.id && <TableHead className="w-[50px] text-center">ID</TableHead>}
+                                            {columnVisibility.code && <TableHead className="w-[150px]">Code</TableHead>}
+                                            {columnVisibility.title && <TableHead className="w-[250px]">Title</TableHead>}
+                                            {columnVisibility.organization && <TableHead className="w-[250px]">Sender/Organization of the letter</TableHead>}
+                                            {columnVisibility.department && <TableHead className="w-[250px]">Department</TableHead>}
+                                            {columnVisibility.assignee && <TableHead className="w-[150px]">Assignee</TableHead>}
+                                            {columnVisibility.date && <TableHead className="w-[150px]">Received Date</TableHead>}
+                                            {columnVisibility.status && <TableHead className="w-[150px] text-center">Status</TableHead>}
+                                            {columnVisibility.other && <TableHead className="w-[250px]">Cheque no /Money Order No</TableHead>}
+                                            {/* Actions column — always visible */}
+                                            <TableHead className="w-[80px] text-center">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     {isLoading ? (
                                         <TableBody>
                                             <TableRow>
-                                                <TableCell colSpan={8} className="h-80 text-center p-0">
-                                                    <div
-                                                        className="w-full flex flex-col items-center justify-center py-8">
+                                                <TableCell colSpan={10} className="h-80 text-center p-0">
+                                                    <div className="w-full flex flex-col items-center justify-center py-8">
                                                         <div className="flex items-center justify-center space-x-2">
-                                                            <div
-                                                                className="h-4 w-4 bg-primary/60 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                                                            <div
-                                                                className="h-4 w-4 bg-primary/60 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                                                            <div
-                                                                className="h-4 w-4 bg-primary/60 rounded-full animate-bounce"></div>
+                                                            <div className="h-4 w-4 bg-primary/60 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                                            <div className="h-4 w-4 bg-primary/60 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                                            <div className="h-4 w-4 bg-primary/60 rounded-full animate-bounce"></div>
                                                         </div>
-                                                        <p className="text-sm text-muted-foreground mt-4">Loading letter
-                                                            data...</p>
+                                                        <p className="text-sm text-muted-foreground mt-4">Loading letter data...</p>
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
                                         </TableBody>
                                     ) : letters.length > 0 ? (
                                         <TableBody>
-                                           {letters.map((item, index) => (
-                                            <Link key={item.id} href={`/letters/${item.id}`} passHref legacyBehavior>
-                                                <TableRow className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800">
+                                            {letters.map((item, index) => (
+                                                <TableRow key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                                                     {columnVisibility.id && (
                                                         <TableCell className="text-center w-[50px]">
                                                             {(currentPage - 1) * pageSize + index + 1}
                                                         </TableCell>
                                                     )}
-                                                        {columnVisibility.code && (
-                                                            <TableCell className="w-[150px]">
-                                                                <div className="truncate max-w-[150px]">
-                                                                    {item.code}
-                                                                </div>
-                                                            </TableCell>
-                                                        )}
-                                                        {columnVisibility.title && (
-                                                            <TableCell className="w-[250px]">
-                                                                <div className="truncate max-w-[250px]">
-                                                                    {item.subject}
-                                                                </div>
-                                                            </TableCell>
-                                                        )}
-                                                        {columnVisibility.organization && (
-                                                            <TableCell className="w-[250px]">
-                                                                <div className="truncate max-w-[250px]">
-                                                                    {item.organization || "—"}
-                                                                </div>
-                                                            </TableCell>
-                                                        )}
-                                                        {columnVisibility.department && (
-                                                            <TableCell className="w-[250px]">
-                                                                <div className="truncate max-w-[250px]">
-                                                                    {item?.department || "—"}
-                                                                </div>
-                                                            </TableCell>
-                                                        )}
-                                                        {columnVisibility.assignee && (
-                                                            <TableCell className="w-[150px]">
-                                                                <div className="truncate max-w-[150px]">
-                                                                    {item?.assignee || "—"}
-                                                                </div>
-                                                            </TableCell>
-                                                        )}
-                                                        {columnVisibility.date && (
-                                                            <TableCell className="w-[150px]">
-                                                                <div className="truncate max-w-[150px]">
-                                                                    {formatDate(item.create_datetime)}
-                                                                </div>
-                                                            </TableCell>
-                                                        )}
-                                                        {columnVisibility.status && (
-                                                            <TableCell className="text-center w-[150px]">
-                                                                  <span
-                                                                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusClassName(item.status)}`}
-                                                                  >
-                                                                    {item?.status || "No Status"}
-                                                                  </span>
-                                                            </TableCell>
-                                                        )}
-                                                        {columnVisibility.other && (
-                                                            <TableCell className="w-[250px]">
-                                                                <div className="truncate max-w-[250px]">
-                                                                    {item.other || "—"}
-                                                                </div>
-                                                            </TableCell>
-                                                        )}
-                                                    </TableRow>
-                                                </Link>
+                                                    {columnVisibility.code && (
+                                                        <TableCell className="w-[150px]">
+                                                            <div className="truncate max-w-[150px]">{item.code}</div>
+                                                        </TableCell>
+                                                    )}
+                                                    {columnVisibility.title && (
+                                                        <TableCell className="w-[250px]">
+                                                            <div className="truncate max-w-[250px]">{item.subject}</div>
+                                                        </TableCell>
+                                                    )}
+                                                    {columnVisibility.organization && (
+                                                        <TableCell className="w-[250px]">
+                                                            <div className="truncate max-w-[250px]">{item.organization || "—"}</div>
+                                                        </TableCell>
+                                                    )}
+                                                    {columnVisibility.department && (
+                                                        <TableCell className="w-[250px]">
+                                                            <div className="truncate max-w-[250px]">{item?.department || "—"}</div>
+                                                        </TableCell>
+                                                    )}
+                                                    {columnVisibility.assignee && (
+                                                        <TableCell className="w-[150px]">
+                                                            <div className="truncate max-w-[150px]">{item?.assignee || "—"}</div>
+                                                        </TableCell>
+                                                    )}
+                                                    {columnVisibility.date && (
+                                                        <TableCell className="w-[150px]">
+                                                            <div className="truncate max-w-[150px]">{formatDate(item.create_datetime)}</div>
+                                                        </TableCell>
+                                                    )}
+                                                    {columnVisibility.status && (
+                                                        <TableCell className="text-center w-[150px]">
+                                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusClassName(item.status)}`}>
+                                                                {item?.status || "No Status"}
+                                                            </span>
+                                                        </TableCell>
+                                                    )}
+                                                    {columnVisibility.other && (
+                                                        <TableCell className="w-[250px]">
+                                                            <div className="truncate max-w-[250px]">{item.other || "—"}</div>
+                                                        </TableCell>
+                                                    )}
+                                                    {/* Actions cell */}
+                                                    <TableCell className="text-center w-[80px]">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                                            onClick={() => router.push(`/letters/${item.id}`)}
+                                                            aria-label={`View letter ${item.code}`}
+                                                        >
+                                                            <Eye className="h-4 w-4"/>
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
                                             ))}
                                         </TableBody>
                                     ) : (
                                         <TableBody>
                                             <TableRow>
-                                                <TableCell colSpan={8} className="h-90 text-center">
+                                                <TableCell colSpan={10} className="h-90 text-center">
                                                     <div className="flex flex-col items-center justify-center py-6">
-                                                        <MailSearch
-                                                            className="h-10 w-10 text-muted-foreground/40 mb-2"/>
-                                                        <p className="text-sm text-muted-foreground">No letters
-                                                            found</p>
+                                                        <MailSearch className="h-10 w-10 text-muted-foreground/40 mb-2"/>
+                                                        <p className="text-sm text-muted-foreground">No letters found</p>
                                                         {showFilters && (
                                                             <Button
                                                                 variant="link"
@@ -925,6 +804,7 @@ export default function LetterDashboard() {
                             </div>
                         </div>
 
+                        {/* Pagination */}
                         <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-2">
                                 <span className="text-sm text-muted-foreground">Total {totalRows}</span>
@@ -941,31 +821,17 @@ export default function LetterDashboard() {
                                     </SelectTrigger>
                                     <SelectContent>
                                         {pageSizeOptions.map((size) => (
-                                            <SelectItem key={size} value={size.toString()}>
-                                                {size}
-                                            </SelectItem>
+                                            <SelectItem key={size} value={size.toString()}>{size}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                <span className="text-sm text-muted-foreground">
-                                    Page {currentPage} of {totalPages}
-                                </span>
+                                <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
                             </div>
                             <div className="flex items-center space-x-2">
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() => setCurrentPage(1)}
-                                    disabled={currentPage === 1}
-                                >
+                                <Button variant="outline" size="icon" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>
                                     <ChevronsLeft className="h-4 w-4"/>
                                 </Button>
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                                    disabled={currentPage === 1}
-                                >
+                                <Button variant="outline" size="icon" onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}>
                                     <ChevronLeft className="h-4 w-4"/>
                                 </Button>
                                 {generatePageNumbers().map((pageNumber) => (
@@ -978,20 +844,10 @@ export default function LetterDashboard() {
                                         {pageNumber}
                                     </Button>
                                 ))}
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                                    disabled={currentPage === totalPages}
-                                >
+                                <Button variant="outline" size="icon" onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages}>
                                     <ChevronRight className="h-4 w-4"/>
                                 </Button>
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() => setCurrentPage(totalPages)}
-                                    disabled={currentPage === totalPages}
-                                >
+                                <Button variant="outline" size="icon" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}>
                                     <ChevronsRight className="h-4 w-4"/>
                                 </Button>
                             </div>

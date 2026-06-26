@@ -28,6 +28,9 @@ import api from "@/lib/api";
 interface Organization {
     id: string;
     name: string;
+    address?: string;  
+    email?: string;     
+    telephone?: string;
 }
 
 interface PaginationState {
@@ -251,7 +254,12 @@ export default function OrganizationPage() {
                                         <TableRow>
                                             <TableHead className="text-center">ID</TableHead>
                                             <TableHead>Name</TableHead>
+                                            <TableHead>Address</TableHead>   
+                                            <TableHead>Email</TableHead>     
+                                            <TableHead>Telephone</TableHead> 
                                             <TableHead className="text-center">Actions</TableHead>
+
+
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -290,6 +298,9 @@ export default function OrganizationPage() {
                                                     {(pagination.currentPage - 1) * pagination.pageSize + index + 1}
                                                 </TableCell>
                                                 <TableCell className="font-medium truncate max-w-40">{organization.name}</TableCell>
+                                                <TableCell className="text-muted-foreground">{organization.address || "-"}</TableCell>   
+                                                <TableCell className="text-muted-foreground">{organization.email || "-"}</TableCell>    
+                                                <TableCell className="text-muted-foreground">{organization.telephone || "-"}</TableCell> 
                                                 <TableCell className="text-center">
                                                         <div className="flex items-center justify-center h-full">
                                                             <DropdownMenu>

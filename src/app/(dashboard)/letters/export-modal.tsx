@@ -44,17 +44,16 @@ export function ExportModal({isOpen, onCloseAction}: ExportModalProps) {
     const [columns, setColumns] = useState<Column[]>([
         {id: 'id', label: 'ID', checked: true},
         {id: 'code', label: 'Code', checked: true},
-        {id: 'subject', label: 'Subject', checked: true},
-        {id: 'sender', label: 'Sender', checked: true},
+        {id: 'subject', label: 'Subject/Content of the letter ', checked: true},
+        {id: 'sender', label: "Sender's Address", checked: true},
         {id: 'email', label: 'Email', checked: true},
         {id: 'telephone', label: 'Telephone', checked: true},
         {id: 'source.name', label: 'Source', checked: true},
-        {id: 'organization.name', label: 'Organization', checked: true},
+        {id: 'organization.name', label: 'Sender/Organization of the letter', checked: true},
         {id: 'department.name', label: 'Department', checked: true},
         {id: 'status.name', label: 'Status', checked: true},
         {id: 'assignee', label: 'Assignee', checked: true},
-        {id: 'other', label: 'Other', checked: true},
-        {id: 'content', label: 'Content', checked: true},
+        {id: 'other', label: 'Cheque no /Money Order No ', checked: true},
         {id: 'attachments', label: 'Attachments Count', checked: true},
         {id: 'received_datetime', label: 'Received Date', checked: true},
         {id: 'create_datetime', label: 'Create Date', checked: true},
@@ -63,54 +62,64 @@ export function ExportModal({isOpen, onCloseAction}: ExportModalProps) {
 
     const [isExporting, setIsExporting] = useState(false);
 
+   
+
     const handleExport = async () => {
-        try {
-            setIsExporting(true);
-            const selectedColumns = columns
-                .filter(column => column.checked)
-                .map(column => column.id);
+    try {
+        setIsExporting(true);
+        const selectedColumns = columns
+            .filter(column => column.checked)
+            .map(column => column.id);
 
-            const limit = numEntries === 'all' ? 0 : parseInt(numEntries);
+        const limit = numEntries === 'all' ? 0 : parseInt(numEntries);
 
-            const create_date_start = dateRange.create_date_start ?
-                dateRange.create_date_start.toISOString() : undefined;
-            const create_date_end = dateRange.create_date_end ?
-                dateRange.create_date_end.toISOString() : undefined;
+        const requestBody = {
+            limit,
+            columns: selectedColumns,
+            ...(dateRange.create_date_start && { 
+                create_date_start: dateRange.create_date_start.toISOString() 
+            }),
+            ...(dateRange.create_date_end && { 
+                create_date_end: dateRange.create_date_end.toISOString() 
+            })
+        };
 
-            const requestBody = {
-                limit,
-                columns: selectedColumns,
-                ...(create_date_start && {create_date_start}),
-                ...(create_date_end && {create_date_end})
-            };
+        const response = await api.post('/v1/letter/download-excel/', requestBody, {
+            responseType: 'blob',
+        });
 
-            const response = await api.post('/v1/letter/download-excel/', requestBody, {
-                responseType: 'blob',
-            });
-
-            const blob = new Blob([response.data], {
-                type: String(response.headers['content-type'] || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-            });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-
-            const today = format(new Date(), 'yyyy-MM-dd');
-            a.download = `letters-export-${today}.xlsx`;
-
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-
-            onCloseAction();
-        } catch (error) {
-            console.error('Export error:', error);
-            toast.error(error.response?.data.message || 'Something went wrong. Please try again');
-        } finally {
-            setIsExporting(false);
+        // Check if response is actually an error JSON
+        const contentType = response.headers['content-type'] || '';
+        if (contentType.includes('application/json')) {
+            const text = await response.data.text();
+            const json = JSON.parse(text);
+            toast.error(json.message || 'Export failed');
+            return;
         }
-    };
+
+        const blob = new Blob([response.data], { type: contentType });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `letters-export-${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        onCloseAction();
+
+    } catch (error) {
+        console.error('Export error full:', error);
+        
+        if (error.code === 'ERR_NETWORK') {
+            toast.error('Network error - Backend server ekata connect wenaddi. Server running da check karanna.');
+        } else {
+            toast.error(error.response?.data?.message || 'Something went wrong');
+        }
+    } finally {
+        setIsExporting(false);
+    }
+};
 
     const handlePrint = async () => {
         try {
