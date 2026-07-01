@@ -303,7 +303,7 @@ export default function SignUpPage() {
                                         <FormControl>
                                             <div className="relative">
                                                 <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"/>
-                                                <Input disabled={isSubmitting} placeholder="John"
+                                                <Input disabled={isSubmitting} 
                                                     className="pl-9 h-10 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700" {...field}/>
                                             </div>
                                         </FormControl>
@@ -314,7 +314,7 @@ export default function SignUpPage() {
                                     <FormItem>
                                         <FormLabel className="text-gray-700 dark:text-gray-300 text-sm">Last name</FormLabel>
                                         <FormControl>
-                                            <Input disabled={isSubmitting} placeholder="Doe"
+                                            <Input disabled={isSubmitting} 
                                                 className="h-10 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700" {...field}/>
                                         </FormControl>
                                         <FormMessage/>
@@ -328,7 +328,7 @@ export default function SignUpPage() {
                                     <FormControl>
                                         <div className="relative">
                                             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"/>
-                                            <Input disabled={isSubmitting} placeholder="you@example.com"
+                                            <Input disabled={isSubmitting} 
                                                 className="pl-9 h-10 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700" {...field}/>
                                         </div>
                                     </FormControl>
