@@ -522,11 +522,11 @@ export default function LetterDashboard() {
                                     {columnVisibility.title && (
                                         <div className="relative">
                                             <Input
-                                                placeholder="Search by Title..."
+                                                placeholder="Search by Subject/Content of the Letter..."
                                                 value={inputFilters.subject}
                                                 onChange={(e) => setInputFilters(prev => ({...prev, subject: e.target.value}))}
                                                 className="w-full"
-                                                aria-label="Search by Title"
+                                                aria-label="Search by Subject/Content of the Letter"
                                             />
                                             {inputFilters.subject && (
                                                 <Button variant="ghost" size="icon"
