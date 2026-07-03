@@ -1077,19 +1077,19 @@ const [newOrgTelephone, setNewOrgTelephone] = useState("");
                                                                             autoFocus
                                                                         />
                                                                         <Input
-                                                                            placeholder="Address (optional)"
+                                                                            placeholder="Address "
                                                                             value={newOrgAddress}
                                                                             onChange={(e) => setNewOrgAddress(e.target.value)}
                                                                             className="h-8 text-sm"
                                                                         />
                                                                         <Input
-                                                                            placeholder="Email (optional)"
+                                                                            placeholder="Email "
                                                                             value={newOrgEmail}
                                                                             onChange={(e) => setNewOrgEmail(e.target.value)}
                                                                             className="h-8 text-sm"
                                                                         />
                                                                         <Input
-                                                                            placeholder="Telephone (optional)"
+                                                                            placeholder="Telephone "
                                                                             value={newOrgTelephone}
                                                                             onChange={(e) => setNewOrgTelephone(e.target.value)}
                                                                             className="h-8 text-sm"
@@ -1146,6 +1146,28 @@ const [newOrgTelephone, setNewOrgTelephone] = useState("");
                                         </FormItem>
                                     )}/>
 
+                                    {/* Email */}
+                                    <FormField control={control} name="email" render={({field}) => (
+                                        <FormItem>
+                                            <FormLabel>Email</FormLabel>
+                                            <FormControl>
+                                                <Input {...field} placeholder="Enter sender's email" disabled={isSubmitting}/>
+                                            </FormControl>
+                                            <FormMessage/>
+                                        </FormItem>
+                                    )}/>
+
+                                    {/* Telephone */}
+                                    <FormField control={control} name="telephone" render={({field}) => (
+                                        <FormItem>
+                                            <FormLabel>Telephone</FormLabel>
+                                            <FormControl>
+                                                <Input {...field} placeholder="Telephone Number or Fax Number" disabled={isSubmitting}/>
+                                            </FormControl>
+                                            <FormMessage/>
+                                        </FormItem>
+                                    )}/>
+
                                     {/* Cheque No / Money Order No — moved above Sender's Subject No / Content of the letter */}
                                     <FormField control={control} name="other" render={({field}) => (
                                         <FormItem>
@@ -1181,27 +1203,7 @@ const [newOrgTelephone, setNewOrgTelephone] = useState("");
                                         </FormItem>
                                     )}/>
 
-                                    {/* Email */}
-                                    <FormField control={control} name="email" render={({field}) => (
-                                        <FormItem>
-                                            <FormLabel>Email</FormLabel>
-                                            <FormControl>
-                                                <Input {...field} placeholder="Enter sender's email" disabled={isSubmitting}/>
-                                            </FormControl>
-                                            <FormMessage/>
-                                        </FormItem>
-                                    )}/>
-
-                                    {/* Telephone */}
-                                    <FormField control={control} name="telephone" render={({field}) => (
-                                        <FormItem>
-                                            <FormLabel>Telephone</FormLabel>
-                                            <FormControl>
-                                                <Input {...field} placeholder="Telephone Number or Fax Number" disabled={isSubmitting}/>
-                                            </FormControl>
-                                            <FormMessage/>
-                                        </FormItem>
-                                    )}/>
+                                    
 
                                     {/* Departments Multi-select */}
                                     <FormField control={control} name="department_ids" render={() => (
@@ -1225,6 +1227,29 @@ const [newOrgTelephone, setNewOrgTelephone] = useState("");
                                             <FormMessage/>
                                         </FormItem>
                                     )}/>
+
+                          {/* Assignees Multi-select */}
+                                     <FormField control={control} name="assignee_ids" render={() => (
+                                        <FormItem>
+                                            <FormLabel>Assignees</FormLabel>
+                                            <div className="border rounded-md p-3 grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                                                {assignees.length === 0 ? (
+                                                    <p className="text-sm text-muted-foreground col-span-2">No assignees available</p>
+                                                ) : assignees.map(a => (
+                                                    <div key={a.id} className="flex items-center space-x-2">
+                                                        <Checkbox
+                                                            id={`assignee-${a.id}`}
+                                                            checked={selectedAssigneeIds.includes(a.id)}
+                                                            onCheckedChange={() => toggleAssignee(a.id)}
+                                                            disabled={isSubmitting}
+                                                        />
+                                                        <label htmlFor={`assignee-${a.id}`} className="text-sm cursor-pointer">{a.name}</label>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <FormMessage/>
+                                        </FormItem>
+                                     )}/>
 
                                     {/* Attachments */}
                                     <FormField control={control} name="attachments" render={() => (
