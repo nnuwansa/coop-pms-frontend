@@ -1258,6 +1258,8 @@ export default function LetterViewPage() {
     const [remarksLoading, setRemarksLoading] = useState(false);
     const [history, setHistory] = useState<HistoryEntry[]>([]);
     const [historyLoading, setHistoryLoading] = useState(false);
+    const [isEditingDepts, setIsEditingDepts] = useState(false);
+const [isEditingAssignees, setIsEditingAssignees] = useState(false);
 
     // Baseline ("last saved") state used to detect unsaved changes
     const [originalDeptIds, setOriginalDeptIds] = useState<number[]>([]);
@@ -1726,7 +1728,7 @@ export default function LetterViewPage() {
                             <Separator/>
 
                             {/* Departments */}
-                            <div className="space-y-2">
+                            {/* <div className="space-y-2">
                                 <p className="text-sm font-medium">Departments</p>
                                 {selectedDeptIds.length > 0 && (
                                     <div className="flex flex-wrap gap-1 mb-2">
@@ -1762,12 +1764,67 @@ export default function LetterViewPage() {
                                         </div>
                                     ))}
                                 </div>
-                            </div>
+                            </div> */}
 
+{/* Departments */}
+<div className="space-y-2">
+    <div className="flex items-center justify-between">
+        <p className="text-sm font-medium">Departments</p>
+        {hasPermission('letter.update') && (
+            <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setIsEditingDepts(prev => !prev)}
+            >
+                {isEditingDepts ? 'Done' : 'Edit'}
+            </Button>
+        )}
+    </div>
+    {selectedDeptIds.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+            {selectedDeptIds.map(deptId => {
+                const dept = allDepartments.find(d => d.id === deptId);
+                return dept ? (
+                    <Badge key={deptId} variant="secondary" className="text-xs gap-1">
+                        {dept.name}
+                        {hasPermission('letter.update') && isEditingDepts && (
+                            <button onClick={() => toggleDept(deptId)} className="ml-0.5 hover:text-destructive">
+                                <X className="h-3 w-3"/>
+                            </button>
+                        )}
+                    </Badge>
+                ) : null;
+            })}
+        </div>
+    ) : (
+        <p className="text-sm text-muted-foreground">No departments assigned</p>
+    )}
+    {isEditingDepts && (
+        <div className="border rounded-md p-3 grid grid-cols-1 gap-2 max-h-44 overflow-y-auto">
+            {allDepartments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No departments available</p>
+            ) : allDepartments.map(dept => (
+                <div key={dept.id} className="flex items-center space-x-2">
+                    <Checkbox
+                        id={`dept-${dept.id}`}
+                        checked={selectedDeptIds.includes(dept.id)}
+                        onCheckedChange={() => toggleDept(dept.id)}
+                        disabled={!hasPermission('letter.update')}
+                    />
+                    <label htmlFor={`dept-${dept.id}`} className="text-sm cursor-pointer leading-tight">
+                        {dept.name}
+                    </label>
+                </div>
+            ))}
+        </div>
+    )}
+</div>
                             <Separator/>
 
                             {/* Assignees */}
-                            <div className="space-y-2">
+                            {/* <div className="space-y-2">
                                 <p className="text-sm font-medium">Assignees</p>
                                 {selectedAssigneeIds.length > 0 && (
                                     <div className="flex flex-wrap gap-1 mb-2">
@@ -1803,7 +1860,63 @@ export default function LetterViewPage() {
                                         </div>
                                     ))}
                                 </div>
-                            </div>
+                            </div> */}
+
+                            {/* Assignees */}
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-sm font-medium">Assignees</p>
+                                            {hasPermission('letter.update') && (
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 px-2 text-xs"
+                                                    onClick={() => setIsEditingAssignees(prev => !prev)}
+                                                >
+                                                    {isEditingAssignees ? 'Done' : 'Edit'}
+                                                </Button>
+                                            )}
+                                        </div>
+                                        {selectedAssigneeIds.length > 0 ? (
+                                            <div className="flex flex-wrap gap-1">
+                                                {selectedAssigneeIds.map(assigneeId => {
+                                                    const assignee = allAssignees.find(a => a.id === assigneeId);
+                                                    return assignee ? (
+                                                        <Badge key={assigneeId} variant="secondary" className="text-xs gap-1">
+                                                            {assignee.name}
+                                                            {hasPermission('letter.update') && isEditingAssignees && (
+                                                                <button onClick={() => toggleAssignee(assigneeId)} className="ml-0.5 hover:text-destructive">
+                                                                    <X className="h-3 w-3"/>
+                                                                </button>
+                                                            )}
+                                                        </Badge>
+                                                    ) : null;
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-muted-foreground">No assignees assigned</p>
+                                        )}
+                                        {isEditingAssignees && (
+                                            <div className="border rounded-md p-3 grid grid-cols-1 gap-2 max-h-44 overflow-y-auto">
+                                                {allAssignees.length === 0 ? (
+                                                    <p className="text-sm text-muted-foreground">No assignees available</p>
+                                                ) : allAssignees.map(a => (
+                                                    <div key={a.id} className="flex items-center space-x-2">
+                                                        <Checkbox
+                                                            id={`assignee-${a.id}`}
+                                                            checked={selectedAssigneeIds.includes(a.id)}
+                                                            onCheckedChange={() => toggleAssignee(a.id)}
+                                                            disabled={!hasPermission('letter.update')}
+                                                        />
+                                                        <label htmlFor={`assignee-${a.id}`} className="text-sm cursor-pointer leading-tight">
+                                                            {a.name}
+                                                        </label>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
 
                             {/* Save */}
                             {hasPermission('letter.update') && (
