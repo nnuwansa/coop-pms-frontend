@@ -451,7 +451,7 @@ export default function LetterDashboard() {
                                     {Object.entries({
                                         id: "ID",
                                         code: "Code",
-                                        title: "Title",
+                                        title: "Subject/Content of the Letter",
                                         organization: "Sender/Organization of the letter",
                                         department: "Department",
                                         assignee: "Assignee",
