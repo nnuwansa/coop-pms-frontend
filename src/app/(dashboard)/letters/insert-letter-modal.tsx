@@ -1146,51 +1146,53 @@ const [newOrgTelephone, setNewOrgTelephone] = useState("");
                                         </FormItem>
                                     )}/>
 
-                                    {/* Email */}
-                                    <FormField control={control} name="email" render={({field}) => (
-                                        <FormItem>
-                                            <FormLabel>Email</FormLabel>
-                                            <FormControl>
-                                                <Input {...field} placeholder="Enter sender's email" disabled={isSubmitting}/>
-                                            </FormControl>
-                                            <FormMessage/>
-                                        </FormItem>
-                                    )}/>
+                                    {/* Email | Telephone */}
+<div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+    <FormField control={control} name="email" render={({field}) => (
+        <FormItem>
+            <FormLabel>Email</FormLabel>
+            <FormControl>
+                <Input {...field} placeholder="Enter sender's email" disabled={isSubmitting}/>
+            </FormControl>
+            <FormMessage/>
+        </FormItem>
+    )}/>
 
-                                    {/* Telephone */}
-                                    <FormField control={control} name="telephone" render={({field}) => (
-                                        <FormItem>
-                                            <FormLabel>Telephone</FormLabel>
-                                            <FormControl>
-                                                <Input {...field} placeholder="Telephone Number or Fax Number" disabled={isSubmitting}/>
-                                            </FormControl>
-                                            <FormMessage/>
-                                        </FormItem>
-                                    )}/>
+    <FormField control={control} name="telephone" render={({field}) => (
+        <FormItem>
+            <FormLabel>Telephone</FormLabel>
+            <FormControl>
+                <Input {...field} placeholder="Telephone Number or Fax Number" disabled={isSubmitting}/>
+            </FormControl>
+            <FormMessage/>
+        </FormItem>
+    )}/>
+</div>
 
-                                    {/* Cheque No / Money Order No — moved above Sender's Subject No / Content of the letter */}
-                                    <FormField control={control} name="other" render={({field}) => (
-                                        <FormItem>
-                                            <FormLabel>Cheque No / Money Order No</FormLabel>
-                                            <FormControl>
-                                                <Textarea {...field} disabled={isSubmitting} placeholder="CH- Cheque Number, MO- Money Order Number" className="min-h-[70px]"/>
-                                            </FormControl>
-                                            <FormMessage/>
-                                        </FormItem>
-                                    )}/>
+{/* Cheque No / Money Order No | Sender's Subject No */}
+<div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+    <FormField control={control} name="other" render={({field}) => (
+        <FormItem>
+            <FormLabel>Cheque No / Money Order No</FormLabel>
+            <FormControl>
+                <Textarea {...field} disabled={isSubmitting} placeholder="CH- Cheque Number, MO- Money Order Number" className="min-h-[38px] h-[38px] resize-none"/>
+            </FormControl>
+            <FormMessage/>
+        </FormItem>
+    )}/>
 
-                                    {/* NEW: Sender's Subject No — between Cheque/Money Order No and Content of the letter */}
-                                    <FormField control={control} name="sender_subject_no" render={({field}) => (
-                                        <FormItem>
-                                            <FormLabel>Sender's Subject No</FormLabel>
-                                            <FormControl>
-                                                <Input {...field} disabled={isSubmitting} placeholder="Enter sender's subject number"/>
-                                            </FormControl>
-                                            <FormMessage/>
-                                        </FormItem>
-                                    )}/>
+    <FormField control={control} name="sender_subject_no" render={({field}) => (
+        <FormItem>
+            <FormLabel>Sender's Subject No</FormLabel>
+            <FormControl>
+                <Input {...field} disabled={isSubmitting} placeholder="Enter sender's subject number"/>
+            </FormControl>
+            <FormMessage/>
+        </FormItem>
+    )}/>
+</div>
 
-                                    {/* Subject/Content of the Letter — now a larger textarea to allow more text */}
+                                    {/* Subject/Content of the Letter  */}
                                     <FormField control={control} name="subject" render={({field}) => (
                                         <FormItem>
                                             <FormLabel>Subject/Content of the Letter</FormLabel>
