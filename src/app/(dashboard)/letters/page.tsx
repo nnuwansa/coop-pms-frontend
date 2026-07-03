@@ -531,7 +531,7 @@ export default function LetterDashboard() {
                                             {inputFilters.subject && (
                                                 <Button variant="ghost" size="icon"
                                                     className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                    onClick={() => clearFilter('subject')} aria-label="Clear Title filter">
+                                                    onClick={() => clearFilter('subject')} aria-label="Clear  Subject/Content of the Letter filter">
                                                     <X className="h-4 w-4"/>
                                                 </Button>
                                             )}
@@ -683,7 +683,7 @@ export default function LetterDashboard() {
                                         <TableRow>
                                             {columnVisibility.id && <TableHead className="w-[50px] text-center">ID</TableHead>}
                                             {columnVisibility.code && <TableHead className="w-[150px]">Code</TableHead>}
-                                            {columnVisibility.title && <TableHead className="w-[250px]">Title</TableHead>}
+                                            {columnVisibility.title && <TableHead className="w-[250px]">Subject/Content of the Letter</TableHead>}
                                             {columnVisibility.organization && <TableHead className="w-[250px]">Sender/Organization of the letter</TableHead>}
                                             {columnVisibility.department && <TableHead className="w-[250px]">Department</TableHead>}
                                             {columnVisibility.assignee && <TableHead className="w-[150px]">Assignee</TableHead>}
