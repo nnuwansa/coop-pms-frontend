@@ -887,8 +887,8 @@ const handleNamesChanged = () => {
                             <TableHeader>
                                 <TableRow>
                                     {columnVisibility.id && <TableHead>ID</TableHead>}
-                                    {columnVisibility.first_name && <TableHead>First Name</TableHead>}
-                                    {columnVisibility.last_name && <TableHead>Last Name</TableHead>}
+                                    {columnVisibility.first_name && <TableHead> Name</TableHead>}
+                                    {/* {columnVisibility.last_name && <TableHead>Last Name</TableHead>} */}
                                     {columnVisibility.email && <TableHead>Email</TableHead>}
                                     {columnVisibility.role && <TableHead>Role</TableHead>}
                                     {columnVisibility.department && <TableHead>Department</TableHead>}
@@ -946,8 +946,8 @@ const handleNamesChanged = () => {
                                             </TableCell>}
                                             {columnVisibility.first_name && <TableCell
                                                 className="truncate max-w-[150px]">{user.first_name}</TableCell>}
-                                            {columnVisibility.last_name && <TableCell
-                                                className="truncate max-w-[150px]">{user.last_name}</TableCell>}
+                                            {/* {columnVisibility.last_name && <TableCell
+                                                className="truncate max-w-[150px]">{user.last_name}</TableCell>} */}
                                             {columnVisibility.email &&
                                                 <TableCell className="truncate max-w-[150px]">{user.email}</TableCell>}
                                             {columnVisibility.role && <TableCell
