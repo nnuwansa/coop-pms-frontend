@@ -4,7 +4,7 @@ import {useState} from "react";
 import {Download, Eye, FileText, Paperclip, X} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from "@/components/ui/dialog";
-
+ import api from "@/lib/api"; 
 interface AttachmentPreviewProps {
     attachment: {
         id: number;
@@ -40,24 +40,42 @@ export function AttachmentPreview({attachment}: AttachmentPreviewProps) {
     const isPdf = PDF_EXTENSIONS.includes(ext);
     const isPreviewable = isImage || isPdf;
 
-    const handleDownload = async (e: React.MouseEvent) => {
-        e.stopPropagation();
-        try {
-            const response = await fetch(attachment.url);
-            const blob = await response.blob();
-            const blobUrl = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = blobUrl;
-            link.download = attachment.title || 'download';
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(blobUrl);
-        } catch {
-            // fallback: open in new tab if fetch/download fails (e.g. CORS)
-            window.open(attachment.url, '_blank');
-        }
-    };
+    // const handleDownload = async (e: React.MouseEvent) => {
+    //     e.stopPropagation();
+    //     try {
+    //         const response = await fetch(attachment.url);
+    //         const blob = await response.blob();
+    //         const blobUrl = window.URL.createObjectURL(blob);
+    //         const link = document.createElement('a');
+    //         link.href = blobUrl;
+    //         link.download = attachment.title || 'download';
+    //         document.body.appendChild(link);
+    //         link.click();
+    //         link.remove();
+    //         window.URL.revokeObjectURL(blobUrl);
+    //     } catch {
+    //         // fallback: open in new tab if fetch/download fails (e.g. CORS)
+    //         window.open(attachment.url, '_blank');
+    //     }
+    // };
+   
+
+const handleDownload = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+        const res = await api.get(attachment.url, { responseType: 'blob' });
+        const blobUrl = window.URL.createObjectURL(res.data);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = attachment.title || 'download';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(blobUrl);
+    } catch {
+        window.open(attachment.url, '_blank');
+    }
+};
 
     return (
         <>

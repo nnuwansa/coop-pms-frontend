@@ -156,12 +156,28 @@ const getActionLabel = (action: string): string => {
 // Triggers a browser download using a temporary anchor, without navigating the page.
 // The attachments endpoint is authenticated via httpOnly cookies (same as the
 // axios `api` instance's withCredentials: true), so credentials must be included here too.
+// const downloadAttachment = async (att: AttachmentItem) => {
+//     try {
+//         const res = await fetch(att.url, { credentials: 'include' });
+//         if (!res.ok) throw new Error('Download failed');
+//         const blob = await res.blob();
+//         const blobUrl = window.URL.createObjectURL(blob);
+//         const link = document.createElement('a');
+//         link.href = blobUrl;
+//         link.download = att.title || 'attachment';
+//         document.body.appendChild(link);
+//         link.click();
+//         document.body.removeChild(link);
+//         window.URL.revokeObjectURL(blobUrl);
+//     } catch {
+//         toast.error('Failed to download attachment');
+//     }
+// };
+
 const downloadAttachment = async (att: AttachmentItem) => {
     try {
-        const res = await fetch(att.url, { credentials: 'include' });
-        if (!res.ok) throw new Error('Download failed');
-        const blob = await res.blob();
-        const blobUrl = window.URL.createObjectURL(blob);
+        const res = await api.get(att.url, { responseType: 'blob' });
+        const blobUrl = window.URL.createObjectURL(res.data);
         const link = document.createElement('a');
         link.href = blobUrl;
         link.download = att.title || 'attachment';
