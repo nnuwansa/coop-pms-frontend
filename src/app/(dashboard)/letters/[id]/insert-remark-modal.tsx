@@ -224,6 +224,7 @@ import {toast} from "sonner";
 import {ACCEPTED_FILE_TYPES, MAX_FILE_SIZE} from "@/lib/client-config";
 import api from "@/lib/api";
 import {useAuthStore} from "@/store/auth-store";
+import {formatFileSize} from "@/app/(dashboard)/letters/[id]/attachment-preview";
 
 const fileSchema = z.custom<File>()
     .refine((file) => file instanceof File, "Must be a file")
@@ -403,28 +404,33 @@ export function InsertRemarkModal({letter_id, onSuccess}: InsertRemarkModalProps
                                 </FormControl>
                                 <FormMessage/>
                                 <div className="space-y-3 mt-1">
-                                    {attachments?.map((_att, index) => (
-                                        <div key={index} className="space-y-1">
-                                            <FormField control={control} name={`attachments.${index}.file`} render={() => (
-                                                <FormItem><FormMessage/></FormItem>
-                                            )}/>
-                                            <FormField control={control} name={`attachments.${index}.name`} render={({field}) => (
-                                                <FormItem>
-                                                    <FormControl>
-                                                        <div className="flex gap-2 items-center relative">
-                                                            <Input {...field} placeholder="Enter file name" disabled={isSubmitting}/>
-                                                            <Button type="button" variant="ghost" size="icon"
-                                                                className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                                onClick={() => removeAttachment(index)} disabled={isSubmitting}>
-                                                                <X className="h-4 w-4"/>
-                                                            </Button>
-                                                        </div>
-                                                    </FormControl>
-                                                    <FormMessage/>
-                                                </FormItem>
-                                            )}/>
-                                        </div>
-                                    ))}
+                                   {attachments?.map((_att, index) => (
+    <div key={index} className="space-y-1">
+        <FormField control={control} name={`attachments.${index}.file`} render={() => (
+            <FormItem><FormMessage/></FormItem>
+        )}/>
+        <FormField control={control} name={`attachments.${index}.name`} render={({field}) => (
+            <FormItem>
+                <FormControl>
+                    <div className="flex gap-2 items-center relative">
+                        <Input {...field} placeholder="Enter file name" disabled={isSubmitting}/>
+                        <Button type="button" variant="ghost" size="icon"
+                            className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+                            onClick={() => removeAttachment(index)} disabled={isSubmitting}>
+                            <X className="h-4 w-4"/>
+                        </Button>
+                    </div>
+                </FormControl>
+                <FormMessage/>
+            </FormItem>
+        )}/>
+        {/* size display MOVED outside FormControl, correct variable */}
+        <div className="flex justify-between text-xs text-muted-foreground px-1">
+            <span className="truncate">{_att.file.name}</span>
+            <span>{formatFileSize(_att.file.size)}</span>
+        </div>
+    </div>
+))}
                                 </div>
                             </FormItem>
                         )}/>
