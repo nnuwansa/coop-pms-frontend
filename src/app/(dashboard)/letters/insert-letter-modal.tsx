@@ -38,10 +38,13 @@
 //     source: z.number().min(1, "Source is required"),
 //     sender: z.string().max(150, "Sender's Address cannot exceed 150 characters").optional(),
 //     organization: z.number().optional(),
-//     subject: z.string().min(1, "Subject is required").max(150, "Subject cannot exceed 150 characters"),
+//     // NEW: increased max length since the textarea now supports longer content
+//     subject: z.string().min(1, "Subject is required").max(1000, "Subject/Content cannot exceed 1000 characters"),
 //     email: z.string().email("Invalid email format").max(150).optional().or(z.literal("")),
 //     telephone: z.string().min(10, "Telephone number must be at least 10 digits").max(15).optional().or(z.literal("")),
 //     other: z.string().max(500).optional(),
+//     // NEW: Sender's Subject No field
+//     sender_subject_no: z.string().max(50, "Sender's Subject No cannot exceed 50 characters").optional(),
 //     assignee_ids: z.array(z.number()).optional().default([]),
 //     department_ids: z.array(z.number()).optional().default([]),
 //     attachments: z.array(z.object({
@@ -75,11 +78,14 @@
 //     const [sources, setSources] = useState<{id: number; name: string}[]>([]);
 //     const [departments, setDepartments] = useState<{id: number; name: string}[]>([]);
 //     const [assignees, setAssignees] = useState<{id: number; name: string}[]>([]);
+//     const [newOrgName, setNewOrgName] = useState("");
+// const [newOrgAddress, setNewOrgAddress] = useState("");
+// const [newOrgEmail, setNewOrgEmail] = useState("");
+// const [newOrgTelephone, setNewOrgTelephone] = useState("");
 //     const [isLoading, setIsLoading] = useState(false);
 //     const [orgSearch, setOrgSearch] = useState("");
 //     const [sourceSearch, setSourceSearch] = useState("");
 //     const [isAddingOrg, setIsAddingOrg] = useState(false);
-//     const [newOrgName, setNewOrgName] = useState("");
 //     const fileInputRef = useRef<HTMLInputElement>(null);
 //     const {hasPermission} = useAuthStore();
 
@@ -95,6 +101,7 @@
 //             email: "",
 //             telephone: "",
 //             other: "",
+//             sender_subject_no: "",
 //             assignee_ids: [],
 //             department_ids: [],
 //             attachments: [],
@@ -138,32 +145,74 @@
 //         }
 //     }, [isOpen, isLoading, fetchLetterCode]);
 
-//     const handleOpenChange = (open: boolean) => {
-//         setIsOpen(open);
-//         if (!open) {
-//             reset();
-//             setIsLoading(false);
-//             setOrgSearch("");
-//             setSourceSearch("");
-//             setIsAddingOrg(false);
-//             setNewOrgName("");
-//         }
-//     };
+//     // const handleOpenChange = (open: boolean) => {
+//     //     setIsOpen(open);
+//     //     if (!open) {
+//     //         reset();
+//     //         setIsLoading(false);
+//     //         setOrgSearch("");
+//     //         setSourceSearch("");
+//     //         setIsAddingOrg(false);
+//     //         setNewOrgName("");
+//     //     }
+//     // };
 
+//     // const handleAddOrganization = async () => {
+//     //     if (!newOrgName.trim()) return;
+//     //     try {
+//     //         const res = await api.post('/v1/organization/', {name: newOrgName.trim()});
+//     //         const newOrg = res.data.data;
+//     //         onOrganizationAdded?.(newOrg);
+//     //         setValue('organization', newOrg.id);
+//     //         setNewOrgName("");
+//     //         setIsAddingOrg(false);
+//     //         toast.success("Organization added successfully");
+//     //     } catch (error) {
+//     //         toast.error(error.response?.data.message || 'Failed to add organization');
+//     //     }
+//     // };
+
+
+//     const handleOpenChange = (open: boolean) => {
+//     setIsOpen(open);
+//     if (!open) {
+//         reset();
+//         setIsLoading(false);
+//         setOrgSearch("");
+//         setSourceSearch("");
+//         setIsAddingOrg(false);
+//         setNewOrgName("");
+//         setNewOrgAddress("");
+//         setNewOrgEmail("");
+//         setNewOrgTelephone("");
+//     }
+// };
 //     const handleAddOrganization = async () => {
-//         if (!newOrgName.trim()) return;
-//         try {
-//             const res = await api.post('/v1/organization/', {name: newOrgName.trim()});
-//             const newOrg = res.data.data;
-//             onOrganizationAdded?.(newOrg);
-//             setValue('organization', newOrg.id);
-//             setNewOrgName("");
-//             setIsAddingOrg(false);
-//             toast.success("Organization added successfully");
-//         } catch (error) {
-//             toast.error(error.response?.data.message || 'Failed to add organization');
-//         }
-//     };
+//     if (!newOrgName.trim()) return;
+//     try {
+//         const res = await api.post('/v1/organization/', {
+//             name: newOrgName.trim(),
+//             address: newOrgAddress.trim() || null,
+//             email: newOrgEmail.trim() || null,
+//             telephone: newOrgTelephone.trim() || null,
+//         });
+//         const newOrg = res.data.data;
+//         onOrganizationAdded?.(newOrg);
+//         setValue('organization', newOrg.id);
+//         // auto-fill the main form's sender fields too, same as selecting an existing org
+//         if (newOrg.address) setValue('sender', newOrg.address);
+//         if (newOrg.email) setValue('email', newOrg.email);
+//         if (newOrg.telephone) setValue('telephone', newOrg.telephone);
+//         setNewOrgName("");
+//         setNewOrgAddress("");
+//         setNewOrgEmail("");
+//         setNewOrgTelephone("");
+//         setIsAddingOrg(false);
+//         toast.success("Organization added successfully");
+//     } catch (error) {
+//         toast.error(error.response?.data.message || 'Failed to add organization');
+//     }
+// };
 
 //     const toggleDepartment = (id: number) => {
 //         const current = selectedDepartmentIds;
@@ -185,6 +234,7 @@
 //                 received_datetime: data.receivedDate.toISOString(),
 //                 subject: data.subject,
 //                 other: data.other || null,
+//                 sender_subject_no: data.sender_subject_no || null,
 //                 sender: data.sender || null,
 //                 email: data.email || null,
 //                 telephone: data.telephone || null,
@@ -397,7 +447,7 @@
 //                                                                     </CommandGroup>
 //                                                                 </CommandList>
 //                                                                 <div className="border-t p-2">
-//                                                                     {isAddingOrg ? (
+//                                                                     {/* {isAddingOrg ? (
 //                                                                         <div className="flex gap-2">
 //                                                                             <Input placeholder="Organization name..." value={newOrgName}
 //                                                                                 onChange={(e) => setNewOrgName(e.target.value)}
@@ -416,8 +466,67 @@
 //                                                                             onClick={() => setIsAddingOrg(true)}>
 //                                                                             <Plus className="mr-2 h-4 w-4"/>Add new organization
 //                                                                         </Button>
-//                                                                     )}
-//                                                                 </div>
+//                                                                     )} */}
+
+//                                                                     {isAddingOrg ? (
+//                                                                     <div className="flex flex-col gap-2 p-1">
+//                                                                         <Input
+//                                                                             placeholder="Organization name..."
+//                                                                             value={newOrgName}
+//                                                                             onChange={(e) => setNewOrgName(e.target.value)}
+//                                                                             className="h-8 text-sm"
+//                                                                             autoFocus
+//                                                                         />
+//                                                                         <Input
+//                                                                             placeholder="Address "
+//                                                                             value={newOrgAddress}
+//                                                                             onChange={(e) => setNewOrgAddress(e.target.value)}
+//                                                                             className="h-8 text-sm"
+//                                                                         />
+//                                                                         <Input
+//                                                                             placeholder="Email "
+//                                                                             value={newOrgEmail}
+//                                                                             onChange={(e) => setNewOrgEmail(e.target.value)}
+//                                                                             className="h-8 text-sm"
+//                                                                         />
+//                                                                         <Input
+//                                                                             placeholder="Telephone "
+//                                                                             value={newOrgTelephone}
+//                                                                             onChange={(e) => setNewOrgTelephone(e.target.value)}
+//                                                                             className="h-8 text-sm"
+//                                                                             onKeyDown={(e) => {
+//                                                                                 if (e.key === 'Enter') { e.preventDefault(); handleAddOrganization(); }
+//                                                                                 if (e.key === 'Escape') {
+//                                                                                     setIsAddingOrg(false);
+//                                                                                     setNewOrgName("");
+//                                                                                     setNewOrgAddress("");
+//                                                                                     setNewOrgEmail("");
+//                                                                                     setNewOrgTelephone("");
+//                                                                                 }
+//                                                                             }}
+//                                                                         />
+//                                                                         <div className="flex gap-2 justify-end mt-1">
+//                                                                             <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => {
+//                                                                                 setIsAddingOrg(false);
+//                                                                                 setNewOrgName("");
+//                                                                                 setNewOrgAddress("");
+//                                                                                 setNewOrgEmail("");
+//                                                                                 setNewOrgTelephone("");
+//                                                                             }}>
+//                                                                                 <X className="h-4 w-4"/>
+//                                                                             </Button>
+//                                                                             <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization} disabled={!newOrgName.trim()}>
+//                                                                                 Add
+//                                                                             </Button>
+//                                                                         </div>
+//                                                                     </div>
+//                                                                 ) : (
+//                                                                     <Button type="button" variant="ghost" className="w-full h-8 text-sm justify-start text-muted-foreground hover:text-foreground"
+//                                                                         onClick={() => setIsAddingOrg(true)}>
+//                                                                         <Plus className="mr-2 h-4 w-4"/>Add new organization
+//                                                                     </Button>
+//                                                                 )}
+//                                                             </div>
 //                                                             </Command>
 //                                                         </PopoverContent>
 //                                                     </Popover>
@@ -438,51 +547,66 @@
 //                                         </FormItem>
 //                                     )}/>
 
-//                                     {/* Subject/Content of the Letter */}
+//                                     {/* Email | Telephone */}
+//                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+//                                             <FormField control={control} name="email" render={({field}) => (
+//                                                 <FormItem>
+//                                                     <FormLabel>Email</FormLabel>
+//                                                     <FormControl>
+//                                                         <Input {...field} placeholder="Enter sender's email" disabled={isSubmitting}/>
+//                                                     </FormControl>
+//                                                     <FormMessage/>
+//                                                 </FormItem>
+//                                             )}/>
+
+//                                             <FormField control={control} name="telephone" render={({field}) => (
+//                                                 <FormItem>
+//                                                     <FormLabel>Telephone</FormLabel>
+//                                                     <FormControl>
+//                                                         <Input {...field} placeholder="Telephone Number or Fax Number" disabled={isSubmitting}/>
+//                                                     </FormControl>
+//                                                     <FormMessage/>
+//                                                 </FormItem>
+//                                             )}/>
+//                                         </div>
+
+//                                         {/* Cheque No / Money Order No | Sender's Subject No */}
+//                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+//                                             <FormField control={control} name="other" render={({field}) => (
+//                                                 <FormItem>
+//                                                     <FormLabel>Cheque No / Money Order No</FormLabel>
+//                                                     <FormControl>
+//                                                         <Textarea {...field} disabled={isSubmitting} placeholder="CH- Cheque Number, MO- Money Order Number" className="min-h-[38px] h-[38px] resize-none"/>
+//                                                     </FormControl>
+//                                                     <FormMessage/>
+//                                                 </FormItem>
+//                                             )}/>
+
+//                                             <FormField control={control} name="sender_subject_no" render={({field}) => (
+//                                                 <FormItem>
+//                                                     <FormLabel>Sender's Subject No</FormLabel>
+//                                                     <FormControl>
+//                                                         <Input {...field} disabled={isSubmitting} placeholder="Enter sender's subject number"/>
+//                                                     </FormControl>
+//                                                     <FormMessage/>
+//                                                 </FormItem>
+//                                             )}/>
+//                                         </div>
+
+//                                     {/* Subject/Content of the Letter  */}
 //                                     <FormField control={control} name="subject" render={({field}) => (
 //                                         <FormItem>
 //                                             <FormLabel>Subject/Content of the Letter</FormLabel>
 //                                             <FormControl>
-//                                                 <Input {...field} disabled={isSubmitting} placeholder="Enter subject or content of the letter"/>
+//                                                 <Textarea {...field} disabled={isSubmitting}
+//                                                     placeholder="Enter subject or content of the letter"
+//                                                     className="min-h-[160px]"/>
 //                                             </FormControl>
 //                                             <FormMessage/>
 //                                         </FormItem>
 //                                     )}/>
+
                                     
-//                                       {/* Cheque No / Money Order No */}
-//                                     <FormField control={control} name="other" render={({field}) => (
-//                                         <FormItem>
-//                                             <FormLabel>Cheque No / Money Order No</FormLabel>
-//                                             <FormControl>
-//                                                 <Textarea {...field} disabled={isSubmitting} placeholder="CH- Cheque Number, MO- Money Order Number"/>
-//                                             </FormControl>
-//                                             <FormMessage/>
-//                                         </FormItem>
-//                                     )}/>
-
-//                                     {/* Email */}
-//                                     <FormField control={control} name="email" render={({field}) => (
-//                                         <FormItem>
-//                                             <FormLabel>Email</FormLabel>
-//                                             <FormControl>
-//                                                 <Input {...field} placeholder="Enter sender's email" disabled={isSubmitting}/>
-//                                             </FormControl>
-//                                             <FormMessage/>
-//                                         </FormItem>
-//                                     )}/>
-
-//                                     {/* Telephone */}
-//                                     <FormField control={control} name="telephone" render={({field}) => (
-//                                         <FormItem>
-//                                             <FormLabel>Telephone</FormLabel>
-//                                             <FormControl>
-//                                                 <Input {...field} placeholder="Telephone Number or Fax Number" disabled={isSubmitting}/>
-//                                             </FormControl>
-//                                             <FormMessage/>
-//                                         </FormItem>
-//                                     )}/>
-
-                                  
 
 //                                     {/* Departments Multi-select */}
 //                                     <FormField control={control} name="department_ids" render={() => (
@@ -507,8 +631,8 @@
 //                                         </FormItem>
 //                                     )}/>
 
-//                                     {/* Assignees Multi-select */}
-//                                     {/* <FormField control={control} name="assignee_ids" render={() => (
+//                           {/* Assignees Multi-select */}
+//                                      <FormField control={control} name="assignee_ids" render={() => (
 //                                         <FormItem>
 //                                             <FormLabel>Assignees</FormLabel>
 //                                             <div className="border rounded-md p-3 grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
@@ -528,7 +652,7 @@
 //                                             </div>
 //                                             <FormMessage/>
 //                                         </FormItem>
-//                                     )}/> */}
+//                                      )}/>
 
 //                                     {/* Attachments */}
 //                                     <FormField control={control} name="attachments" render={() => (
@@ -595,8 +719,6 @@
 // export default InsertLetterModal
 
 
-
-
 import {ChangeEvent, useCallback, useEffect, useRef, useState} from 'react';
 import {Button} from "@/components/ui/button";
 import {
@@ -635,24 +757,37 @@ const remarkFormSchema = z.object({
     receivedDate: z.date({required_error: "Received date is required"}),
     code: z.string().min(1, "Code is required").max(15, "Code cannot exceed 15 characters"),
     source: z.number().min(1, "Source is required"),
+    sourceName: z.string().optional(), // NEW — tracks selected source name to drive Registered Post field visibility
+    sourceCode: z.string().optional(),
     sender: z.string().max(150, "Sender's Address cannot exceed 150 characters").optional(),
     organization: z.number().optional(),
-    // NEW: increased max length since the textarea now supports longer content
     subject: z.string().min(1, "Subject is required").max(1000, "Subject/Content cannot exceed 1000 characters"),
     email: z.string().email("Invalid email format").max(150).optional().or(z.literal("")),
     telephone: z.string().min(10, "Telephone number must be at least 10 digits").max(15).optional().or(z.literal("")),
     other: z.string().max(500).optional(),
-    // NEW: Sender's Subject No field
     sender_subject_no: z.string().max(50, "Sender's Subject No cannot exceed 50 characters").optional(),
+    // NEW: Registered Postal Number field
+    registered_post_no: z.string().max(50, "Registered Postal Number cannot exceed 50 characters").optional(),
     assignee_ids: z.array(z.number()).optional().default([]),
     department_ids: z.array(z.number()).optional().default([]),
     attachments: z.array(z.object({
         file: fileSchema,
         name: z.string().min(1, "File name is required").max(50),
     })).max(5, "Maximum 5 files allowed").optional().default([]),
-}).refine((data) => data.sender || data.organization, {
-    message: "Either Sender's Address or Sender/Organization of the letter must be provided",
-    path: ["sender"],
+})
+    .refine((data) => data.sender || data.organization, {
+        message: "Either Sender's Address or Sender/Organization of the letter must be provided",
+        path: ["sender"],
+    })
+    // NEW: Registered Postal Number becomes mandatory when Source = "Registered Post"
+    // .refine((data) => data.sourceName !== "Registered Post" || !!data.registered_post_no?.trim(), {
+    //     message: "Registered Postal Number is required when Source is Registered Post",
+    //     path: ["registered_post_no"],
+    // });
+
+.refine((data) => data.sourceCode !== "REGISTERED_POST" || !!data.registered_post_no?.trim(), {
+    message: "Registered Postal Number is required when Source is Registered Post",
+    path: ["registered_post_no"],
 });
 
 type RemarkFormValues = z.infer<typeof remarkFormSchema>;
@@ -674,19 +809,20 @@ interface InsertLetterModalProps {
 export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded}: InsertLetterModalProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
-    const [sources, setSources] = useState<{id: number; name: string}[]>([]);
+    // const [sources, setSources] = useState<{id: number; name: string}[]>([]);
     const [departments, setDepartments] = useState<{id: number; name: string}[]>([]);
     const [assignees, setAssignees] = useState<{id: number; name: string}[]>([]);
     const [newOrgName, setNewOrgName] = useState("");
-const [newOrgAddress, setNewOrgAddress] = useState("");
-const [newOrgEmail, setNewOrgEmail] = useState("");
-const [newOrgTelephone, setNewOrgTelephone] = useState("");
+    const [newOrgAddress, setNewOrgAddress] = useState("");
+    const [newOrgEmail, setNewOrgEmail] = useState("");
+    const [newOrgTelephone, setNewOrgTelephone] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [orgSearch, setOrgSearch] = useState("");
     const [sourceSearch, setSourceSearch] = useState("");
     const [isAddingOrg, setIsAddingOrg] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const {hasPermission} = useAuthStore();
+    const [sources, setSources] = useState<{id: number; name: string; code?: string}[]>([]);
 
     const form = useForm<RemarkFormValues>({
         resolver: zodResolver(remarkFormSchema),
@@ -694,6 +830,7 @@ const [newOrgTelephone, setNewOrgTelephone] = useState("");
             receivedDate: new Date(),
             code: "",
             source: undefined,
+            sourceName: "",
             sender: "",
             organization: undefined,
             subject: "",
@@ -701,6 +838,7 @@ const [newOrgTelephone, setNewOrgTelephone] = useState("");
             telephone: "",
             other: "",
             sender_subject_no: "",
+            registered_post_no: "",
             assignee_ids: [],
             department_ids: [],
             attachments: [],
@@ -711,6 +849,9 @@ const [newOrgTelephone, setNewOrgTelephone] = useState("");
     const attachments = watch("attachments");
     const selectedDepartmentIds = watch("department_ids") || [];
     const selectedAssigneeIds = watch("assignee_ids") || [];
+
+    // NEW: derive whether the "Registered Postal Number" field should show
+    const isRegisteredPost = watch("sourceCode") === "REGISTERED_POST";
 
     const fetchLetterCode = useCallback(async (receivedDate: Date) => {
         try {
@@ -744,74 +885,47 @@ const [newOrgTelephone, setNewOrgTelephone] = useState("");
         }
     }, [isOpen, isLoading, fetchLetterCode]);
 
-    // const handleOpenChange = (open: boolean) => {
-    //     setIsOpen(open);
-    //     if (!open) {
-    //         reset();
-    //         setIsLoading(false);
-    //         setOrgSearch("");
-    //         setSourceSearch("");
-    //         setIsAddingOrg(false);
-    //         setNewOrgName("");
-    //     }
-    // };
-
-    // const handleAddOrganization = async () => {
-    //     if (!newOrgName.trim()) return;
-    //     try {
-    //         const res = await api.post('/v1/organization/', {name: newOrgName.trim()});
-    //         const newOrg = res.data.data;
-    //         onOrganizationAdded?.(newOrg);
-    //         setValue('organization', newOrg.id);
-    //         setNewOrgName("");
-    //         setIsAddingOrg(false);
-    //         toast.success("Organization added successfully");
-    //     } catch (error) {
-    //         toast.error(error.response?.data.message || 'Failed to add organization');
-    //     }
-    // };
-
-
     const handleOpenChange = (open: boolean) => {
-    setIsOpen(open);
-    if (!open) {
-        reset();
-        setIsLoading(false);
-        setOrgSearch("");
-        setSourceSearch("");
-        setIsAddingOrg(false);
-        setNewOrgName("");
-        setNewOrgAddress("");
-        setNewOrgEmail("");
-        setNewOrgTelephone("");
-    }
-};
+        setIsOpen(open);
+        if (!open) {
+            reset();
+            setIsLoading(false);
+            setOrgSearch("");
+            setSourceSearch("");
+            setIsAddingOrg(false);
+            setNewOrgName("");
+            setNewOrgAddress("");
+            setNewOrgEmail("");
+            setNewOrgTelephone("");
+        }
+    };
+
     const handleAddOrganization = async () => {
-    if (!newOrgName.trim()) return;
-    try {
-        const res = await api.post('/v1/organization/', {
-            name: newOrgName.trim(),
-            address: newOrgAddress.trim() || null,
-            email: newOrgEmail.trim() || null,
-            telephone: newOrgTelephone.trim() || null,
-        });
-        const newOrg = res.data.data;
-        onOrganizationAdded?.(newOrg);
-        setValue('organization', newOrg.id);
-        // auto-fill the main form's sender fields too, same as selecting an existing org
-        if (newOrg.address) setValue('sender', newOrg.address);
-        if (newOrg.email) setValue('email', newOrg.email);
-        if (newOrg.telephone) setValue('telephone', newOrg.telephone);
-        setNewOrgName("");
-        setNewOrgAddress("");
-        setNewOrgEmail("");
-        setNewOrgTelephone("");
-        setIsAddingOrg(false);
-        toast.success("Organization added successfully");
-    } catch (error) {
-        toast.error(error.response?.data.message || 'Failed to add organization');
-    }
-};
+        if (!newOrgName.trim()) return;
+        try {
+            const res = await api.post('/v1/organization/', {
+                name: newOrgName.trim(),
+                address: newOrgAddress.trim() || null,
+                email: newOrgEmail.trim() || null,
+                telephone: newOrgTelephone.trim() || null,
+            });
+            const newOrg = res.data.data;
+            onOrganizationAdded?.(newOrg);
+            setValue('organization', newOrg.id);
+            // auto-fill the main form's sender fields too, same as selecting an existing org
+            if (newOrg.address) setValue('sender', newOrg.address);
+            if (newOrg.email) setValue('email', newOrg.email);
+            if (newOrg.telephone) setValue('telephone', newOrg.telephone);
+            setNewOrgName("");
+            setNewOrgAddress("");
+            setNewOrgEmail("");
+            setNewOrgTelephone("");
+            setIsAddingOrg(false);
+            toast.success("Organization added successfully");
+        } catch (error) {
+            toast.error(error.response?.data.message || 'Failed to add organization');
+        }
+    };
 
     const toggleDepartment = (id: number) => {
         const current = selectedDepartmentIds;
@@ -834,6 +948,7 @@ const [newOrgTelephone, setNewOrgTelephone] = useState("");
                 subject: data.subject,
                 other: data.other || null,
                 sender_subject_no: data.sender_subject_no || null,
+                registered_post_no: data.registered_post_no || null, // NEW
                 sender: data.sender || null,
                 email: data.email || null,
                 telephone: data.telephone || null,
@@ -977,12 +1092,25 @@ const [newOrgTelephone, setNewOrgTelephone] = useState("");
                                                                     <CommandEmpty>No source found.</CommandEmpty>
                                                                     <CommandGroup>
                                                                         {field.value && (
-                                                                            <CommandItem onSelect={() => field.onChange(undefined)} className="text-muted-foreground">
+                                                                            <CommandItem onSelect={() => {
+                                                                                field.onChange(undefined);
+                                                                                setValue('sourceName', ''); // NEW
+                                                                                setValue('sourceCode', ''); // NEW
+                                                                                setValue('registered_post_no', ''); // NEW
+                                                                            }} className="text-muted-foreground">
                                                                                 Clear selection
                                                                             </CommandItem>
                                                                         )}
                                                                         {sources.filter(s => !sourceSearch || s.name.toLowerCase().includes(sourceSearch.toLowerCase())).map(src => (
-                                                                            <CommandItem key={src.id} value={src.id.toString()} onSelect={() => field.onChange(src.id)}>
+                                                                            <CommandItem key={src.id} value={src.id.toString()}
+                                                                                onSelect={() => {
+                                                                                    field.onChange(src.id);
+                                                                                    setValue('sourceName', src.name); // NEW
+                                                                                    setValue('sourceCode', src.code); // NEW
+                                                                                    if (src.code !== "REGISTERED_POST") {
+                                                                                        setValue('registered_post_no', ''); // NEW — clear stale value if source changed away
+                                                                                    }
+                                                                                }}>
                                                                                 <Check className={cn("mr-2 h-4 w-4", field.value === src.id ? "opacity-100" : "opacity-0")}/>
                                                                                 {src.name}
                                                                             </CommandItem>
@@ -1046,27 +1174,6 @@ const [newOrgTelephone, setNewOrgTelephone] = useState("");
                                                                     </CommandGroup>
                                                                 </CommandList>
                                                                 <div className="border-t p-2">
-                                                                    {/* {isAddingOrg ? (
-                                                                        <div className="flex gap-2">
-                                                                            <Input placeholder="Organization name..." value={newOrgName}
-                                                                                onChange={(e) => setNewOrgName(e.target.value)}
-                                                                                className="h-8 text-sm"
-                                                                                onKeyDown={(e) => {
-                                                                                    if (e.key === 'Enter') { e.preventDefault(); handleAddOrganization(); }
-                                                                                    if (e.key === 'Escape') { setIsAddingOrg(false); setNewOrgName(""); }
-                                                                                }} autoFocus/>
-                                                                            <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization}>Add</Button>
-                                                                            <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => { setIsAddingOrg(false); setNewOrgName(""); }}>
-                                                                                <X className="h-4 w-4"/>
-                                                                            </Button>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <Button type="button" variant="ghost" className="w-full h-8 text-sm justify-start text-muted-foreground hover:text-foreground"
-                                                                            onClick={() => setIsAddingOrg(true)}>
-                                                                            <Plus className="mr-2 h-4 w-4"/>Add new organization
-                                                                        </Button>
-                                                                    )} */}
-
                                                                     {isAddingOrg ? (
                                                                     <div className="flex flex-col gap-2 p-1">
                                                                         <Input
@@ -1134,6 +1241,21 @@ const [newOrgTelephone, setNewOrgTelephone] = useState("");
                                             )}/>
                                         </div>
                                     </div>
+
+                                    {/* NEW: Registered Postal Number — shown only when Source = "Registered Post" */}
+                                    {isRegisteredPost && (
+                                        <FormField control={control} name="registered_post_no" render={({field}) => (
+                                            <FormItem>
+                                                <FormLabel>
+                                                    Registered Postal Number <span className="text-destructive">*</span>
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <Input {...field} disabled={isSubmitting} placeholder="Enter registered postal number"/>
+                                                </FormControl>
+                                                <FormMessage/>
+                                            </FormItem>
+                                        )}/>
+                                    )}
 
                                     {/* Sender's Address */}
                                     <FormField control={control} name="sender" render={({field}) => (
@@ -1204,8 +1326,6 @@ const [newOrgTelephone, setNewOrgTelephone] = useState("");
                                             <FormMessage/>
                                         </FormItem>
                                     )}/>
-
-                                    
 
                                     {/* Departments Multi-select */}
                                     <FormField control={control} name="department_ids" render={() => (

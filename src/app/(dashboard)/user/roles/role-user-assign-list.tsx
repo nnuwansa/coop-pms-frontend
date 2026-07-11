@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect, useState} from 'react';
+import {useState} from 'react';
 import {useRouter} from 'next/navigation';
 import Link from 'next/link';
 import {z} from 'zod';
@@ -9,17 +9,17 @@ import {useForm} from 'react-hook-form';
 import {zodResolver} from '@hookform/resolvers/zod';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select';
-import {Form, FormControl, FormField, FormItem, FormLabel, FormMessage,} from '@/components/ui/form';
-import {Eye, EyeOff, Loader2, Mail, Lock, IdCard, FileBadge2} from "lucide-react";
+import {Form, FormControl, FormField, FormItem, FormLabel, FormMessage} from '@/components/ui/form';
+import {Eye, EyeOff, Loader2, Mail, Lock, User, IdCard, Briefcase, BadgeCheck} from "lucide-react";
 import api from "@/lib/api";
 
 const signUpSchema = z.object({
-    fullNameId: z.string().min(1, 'Please select your name'),
+    first_name: z.string().min(1, 'First name is required').max(50),
+    last_name: z.string().min(1, 'Last name is required').max(50),
     email: z.string().min(1, 'Email is required').email('Invalid email address').max(150),
-    designationId: z.string().optional(),
-    employee_id: z.string().max(50).optional().or(z.literal('')),
-    nic: z.string().max(20).optional().or(z.literal('')),
+    employee_id: z.string().min(1, 'Employee ID is required').max(50),
+    nic: z.string().min(1, 'NIC is required').max(20),
+    designation: z.string().min(1, 'Designation is required').max(100),
     password: z.string()
         .min(8, 'Password must be at least 8 characters')
         .regex(/[A-Za-z]/, 'Must contain at least one letter')
@@ -37,51 +37,33 @@ export default function SignUpPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
 
-    const [names, setNames] = useState<{id: number; full_name: string}[]>([]);
-    const [designations, setDesignations] = useState<{id: number; name: string}[]>([]);
-
-    useEffect(() => {
-        api.get('/v1/employee_name/public-list').then(r => setNames(r.data.data)).catch(console.error);
-        api.get('/v1/designation/public-list').then(r => setDesignations(r.data.data)).catch(console.error);
-    }, []);
-
     const form = useForm({
         resolver: zodResolver(signUpSchema),
         defaultValues: {
-            fullNameId: '',
-            email: '',
-            designationId: '',
-            employee_id: '',
-            nic: '',
-            password: '',
-            confirmPassword: '',
+            first_name: '', last_name: '', email: '',
+            employee_id: '', nic: '', designation: '',
+            password: '', confirmPassword: '',
         },
     });
 
-    // split full name into first/last since backend still stores both
-    const onSubmit = async (data: z.infer<typeof signUpSchema>) => {
+    const onSubmit = async (data: any) => {
         try {
             setIsSubmitting(true);
-            const selected = names.find(n => n.id.toString() === data.fullNameId);
-            const parts = (selected?.full_name || "").trim().split(/\s+/);
-            const first_name = parts[0] || "";
-            const last_name = parts.slice(1).join(" ") || first_name;
-
             const response = await api.post('/v1/system_user/', {
                 email: data.email,
-                first_name,
-                last_name,
-                employee_id: data.employee_id || null,
-                nic: data.nic || null,
-                designation_id: data.designationId ? parseInt(data.designationId) : null,
+                first_name: data.first_name,
+                last_name: data.last_name,
+                employee_id: data.employee_id,
+                nic: data.nic,
+                designation: data.designation,
                 password: data.password,
             });
             toast.success(response.data.message, {
                 description: 'Please contact the system administrator to activate your account',
             });
             router.push('/sign-in');
-        } catch (error: any) {
-            toast.error(error.response?.data?.message || 'Something went wrong. Please try again');
+        } catch (error) {
+            toast.error(error.response?.data.message || 'Something went wrong. Please try again');
         } finally {
             setIsSubmitting(false);
         }
@@ -121,24 +103,31 @@ export default function SignUpPage() {
 
                     <Form {...form}>
                         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                            <FormField control={form.control} name="fullNameId" render={({field}) => (
-                                <FormItem>
-                                    <FormLabel className="text-gray-700 dark:text-gray-300 text-sm">Full name</FormLabel>
-                                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting}>
+                            <div className="grid grid-cols-2 gap-3">
+                                <FormField control={form.control} name="first_name" render={({field}) => (
+                                    <FormItem>
+                                        <FormLabel className="text-gray-700 dark:text-gray-300 text-sm">First name</FormLabel>
                                         <FormControl>
-                                            <SelectTrigger className="h-10 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700">
-                                                <SelectValue placeholder="Select your name"/>
-                                            </SelectTrigger>
+                                            <div className="relative">
+                                                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"/>
+                                                <Input disabled={isSubmitting}
+                                                    className="pl-9 h-10 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700" {...field}/>
+                                            </div>
                                         </FormControl>
-                                        <SelectContent>
-                                            {names.map((n) => (
-                                                <SelectItem key={n.id} value={n.id.toString()}>{n.full_name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <FormMessage/>
-                                </FormItem>
-                            )}/>
+                                        <FormMessage/>
+                                    </FormItem>
+                                )}/>
+                                <FormField control={form.control} name="last_name" render={({field}) => (
+                                    <FormItem>
+                                        <FormLabel className="text-gray-700 dark:text-gray-300 text-sm">Last name</FormLabel>
+                                        <FormControl>
+                                            <Input disabled={isSubmitting}
+                                                className="h-10 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700" {...field}/>
+                                        </FormControl>
+                                        <FormMessage/>
+                                    </FormItem>
+                                )}/>
+                            </div>
 
                             <FormField control={form.control} name="email" render={({field}) => (
                                 <FormItem>
@@ -159,8 +148,9 @@ export default function SignUpPage() {
                                     <FormLabel className="text-gray-700 dark:text-gray-300 text-sm">Employee ID</FormLabel>
                                     <FormControl>
                                         <div className="relative">
-                                            <IdCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"/>
-                                            <Input disabled={isSubmitting} placeholder="e.g. EMP0123"
+                                            <BadgeCheck className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"/>
+                                            <Input disabled={isSubmitting}
+                                                placeholder="e.g. EMP0123"
                                                 className="pl-9 h-10 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700" {...field}/>
                                         </div>
                                     </FormControl>
@@ -174,29 +164,26 @@ export default function SignUpPage() {
                                         <FormLabel className="text-gray-700 dark:text-gray-300 text-sm">NIC</FormLabel>
                                         <FormControl>
                                             <div className="relative">
-                                                <FileBadge2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"/>
-                                                <Input disabled={isSubmitting} placeholder="e.g. 200012345678"
+                                                <IdCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"/>
+                                                <Input disabled={isSubmitting}
+                                                    placeholder="e.g. 200012345678"
                                                     className="pl-9 h-10 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700" {...field}/>
                                             </div>
                                         </FormControl>
                                         <FormMessage/>
                                     </FormItem>
                                 )}/>
-                                <FormField control={form.control} name="designationId" render={({field}) => (
+                                <FormField control={form.control} name="designation" render={({field}) => (
                                     <FormItem>
                                         <FormLabel className="text-gray-700 dark:text-gray-300 text-sm">Designation</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting}>
-                                            <FormControl>
-                                                <SelectTrigger className="h-10 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700">
-                                                    <SelectValue placeholder="Select designation"/>
-                                                </SelectTrigger>
-                                            </FormControl>
-                                            <SelectContent>
-                                                {designations.map((d) => (
-                                                    <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <FormControl>
+                                            <div className="relative">
+                                                <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"/>
+                                                <Input disabled={isSubmitting}
+                                                    placeholder="e.g. Accountant"
+                                                    className="pl-9 h-10 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700" {...field}/>
+                                            </div>
+                                        </FormControl>
                                         <FormMessage/>
                                     </FormItem>
                                 )}/>

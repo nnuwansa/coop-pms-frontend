@@ -1,3 +1,7 @@
+
+
+
+
 'use client';
 
 import {useEffect, useState} from "react";
@@ -15,11 +19,13 @@ import {
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue,} from "@/components/ui/select";
 import {Input} from "@/components/ui/input";
 import {
+    Briefcase,
     ChevronLeft,
     ChevronRight,
     ChevronsLeft,
     ChevronsRight,
     Filter,
+    History as HistoryIcon,
     MoreVertical,
     Pencil,
     Settings2,
@@ -28,6 +34,7 @@ import {
     UserPlus,
     UserRoundX,
     Users as UsersIcon,
+    Users,
     X
 } from "lucide-react";
 import {toast} from "sonner";
@@ -42,8 +49,17 @@ import {
     AlertDialogHeader,
     AlertDialogTitle
 } from "@/components/ui/alert-dialog";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import {UpdateUserModal} from "@/app/(dashboard)/user/users/update-user-modal";
+import {DesignationManagerDialog} from "@/app/(dashboard)/user/users/designation-manager-dialog";
 import {useDebounce} from "@/hook/debounce";
+import {EmployeeNameManagerDialog} from "@/app/(dashboard)/user/users/employee-name-manager-dialog";
 import api from "@/lib/api";
 
 // Interfaces for API data
@@ -61,6 +77,20 @@ interface Role {
     update_datetime: string;
 }
 
+interface Designation {
+    id: number;
+    name: string;
+    description?: string | null;
+    is_active?: boolean;
+    create_datetime: string;
+    update_datetime: string;
+}
+
+interface EmployeeName {
+    id: number;
+    full_name: string;
+    is_active?: boolean;
+}
 interface User {
     id: number;
     email: string;
@@ -68,6 +98,7 @@ interface User {
     last_name: string;
     department: string | null;
     role: string | null;
+    designation: string | null;
     status: string;
 }
 
@@ -78,6 +109,7 @@ interface UserFilters {
     last_name: string;
     department_id: number;
     role_id: number;
+    designation_id: number;
     is_active: boolean | null;
 }
 
@@ -91,6 +123,14 @@ interface PaginatedResponse<T> {
     page_size: number;
 }
 
+interface UserHistoryEntry {
+    id: number;
+    action: string;
+    description: string;
+    performed_by: string | null;
+    create_datetime: string;
+}
+
 const defaultFilters: UserFilters = {
     id: 0,
     email: "",
@@ -98,6 +138,7 @@ const defaultFilters: UserFilters = {
     last_name: "",
     department_id: 0,
     role_id: 0,
+    designation_id: 0,
     is_active: null
 };
 
@@ -106,20 +147,51 @@ const statuses = [
     {id: 0, name: "Inactive", value: false},
 ]
 
+// Formats a naive UTC datetime string coming from the backend
+// (func.utc_timestamp()) into the user's local time.
+const formatDateTime = (dateStr: string | null | undefined) => {
+    if (!dateStr) return "—";
+    const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(dateStr);
+    const iso = hasTz ? dateStr : `${dateStr}Z`;
+    const date = new Date(iso);
+    if (isNaN(date.getTime())) return dateStr;
+    return date.toLocaleString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+};
+
 export default function UsersPage() {
     // State for API data
     const [departments, setDepartments] = useState<Department[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
+    const [designations, setDesignations] = useState<Designation[]>([]);
     const [users, setUsers] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [refreshTrigger, setRefreshTrigger] = useState(true);
     const [activeUserCount, setActiveUserCount] = useState(0);
     const [inactiveUserCount, setInactiveUserCount] = useState(0);
     const [totalUserCount, setTotalUserCount] = useState(0);
+    const [employeeNames, setEmployeeNames] = useState<EmployeeName[]>([]);
+const [isNameModalOpen, setIsNameModalOpen] = useState(false);
 
     // State for user modal
     const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
+
+    // State for designation manager modal
+    const [isDesignationModalOpen, setIsDesignationModalOpen] = useState(false);
+
+    // State for history modal
+    const [historyModal, setHistoryModal] = useState<{
+        isOpen: boolean;
+        user: User | null;
+        entries: UserHistoryEntry[];
+        isLoading: boolean;
+    }>({isOpen: false, user: null, entries: [], isLoading: false});
 
     // State for filters
     const [showFilters, setShowFilters] = useState(false);
@@ -143,8 +215,12 @@ export default function UsersPage() {
         email: true,
         role: true,
         department: true,
+        designation: true,
         status: true,
     });
+
+    
+
 
     // Fetch stats
     useEffect(() => {
@@ -213,6 +289,53 @@ export default function UsersPage() {
         )
     }, []);
 
+    // Fetch designations
+    const fetchDesignations = async () => {
+        try {
+            const response = await api.get('/v1/designation/list');
+            const data = await response.data;
+
+            setDesignations(data.data);
+
+        } catch (error) {
+            console.error("Error fetching designations:", error);
+            toast.error(error.response?.data.message || 'Something went wrong. Please try again');
+        }
+    };
+
+    const fetchEmployeeNames = async () => {
+    try {
+        const response = await api.get('/v1/employee_name/list');
+        setEmployeeNames(response.data.data);
+    } catch (error) {
+        console.error("Error fetching names:", error);
+        toast.error(error.response?.data.message || 'Something went wrong. Please try again');
+    }
+};
+
+
+
+  useEffect(() => {
+    fetchEmployeeNames().catch((error) => console.error("Error in fetchEmployeeNames:", error));
+}, []);
+
+const handleNamesChanged = () => {
+    fetchEmployeeNames().catch((error) => console.error("Error in fetchEmployeeNames:", error));
+};
+
+
+    useEffect(() => {
+        fetchDesignations().catch(
+            (error) => {
+                console.error("Error in fetchDesignations:", error);
+            }
+        )
+    }, []);
+
+  
+
+
+
     // Fetch users with pagination and debounced filters
     useEffect(() => {
         const fetchUsers = async () => {
@@ -227,6 +350,7 @@ export default function UsersPage() {
                     last_name: debouncedFilters.last_name || "",
                     department_id: debouncedFilters.department_id || 0,
                     role_id: debouncedFilters.role_id || 0,
+                    designation_id: debouncedFilters.designation_id || 0,
                     is_active: debouncedFilters.is_active
                 });
                 const data: PaginatedResponse<User> = await response.data;
@@ -267,6 +391,34 @@ export default function UsersPage() {
             setSelectedUser(null);
             setRefreshTrigger(!refreshTrigger);
         }
+    };
+
+    // Designation manager modal — refetch designations (and users, since labels may change) after any change
+    const designationModalHandler = (isOpen: boolean) => {
+        setIsDesignationModalOpen(isOpen);
+    };
+
+    const handleDesignationsChanged = () => {
+        fetchDesignations().catch((error) => console.error("Error in fetchDesignations:", error));
+        setRefreshTrigger((prev) => !prev);
+    };
+
+    // History modal
+    const handleViewHistory = async (user: User) => {
+        setHistoryModal({isOpen: true, user, entries: [], isLoading: true});
+        try {
+            const response = await api.get(`/v1/system_user/${user.id}/history`);
+            const data = await response.data;
+            setHistoryModal(prev => ({...prev, entries: data.data, isLoading: false}));
+        } catch (error) {
+            console.error("Error fetching user history:", error);
+            toast.error(error.response?.data.message || 'Something went wrong. Please try again');
+            setHistoryModal(prev => ({...prev, isLoading: false}));
+        }
+    };
+
+    const closeHistoryModal = () => {
+        setHistoryModal({isOpen: false, user: null, entries: [], isLoading: false});
     };
 
     // Delete user state
@@ -334,6 +486,15 @@ export default function UsersPage() {
         }));
     };
 
+    const actionBadgeClass = (action: string) => cn(
+        "text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap",
+        {
+            "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200": action === "Created",
+            "bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-200": action === "Updated",
+            "bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200": action === "Deleted",
+        }
+    );
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -344,12 +505,22 @@ export default function UsersPage() {
                         activity to ensure secure and efficient system usage
                     </p>
                 </div>
-                <Link href="/sign-up">
-                    <Button>
-                        <UserPlus className="mr-2 h-4 w-4"/>
-                        New User
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" onClick={() => setIsDesignationModalOpen(true)}>
+                        <Briefcase className="mr-2 h-4 w-4"/>
+                        Manage Designations
                     </Button>
-                </Link>
+                    <Button variant="outline" onClick={() => setIsNameModalOpen(true)}>
+                        <Users className="mr-2 h-4 w-4"/>
+                        Manage Users
+                    </Button>
+                    <Link href="/sign-up">
+                        <Button>
+                            <UserPlus className="mr-2 h-4 w-4"/>
+                            New User
+                        </Button>
+                    </Link>
+                </div>
             </div>
 
             <div className="grid gap-6 md:grid-cols-3">
@@ -456,6 +627,7 @@ export default function UsersPage() {
                                     email: "Email",
                                     role: "Role",
                                     department: "Department",
+                                    designation: "Designation",
                                     status: "Status"
                                 }).map(([key, label]) => (
                                     <DropdownMenuCheckboxItem
@@ -642,6 +814,39 @@ export default function UsersPage() {
                                     </div>
                                 )}
 
+                                {columnVisibility.designation && (
+                                    <div className="relative">
+                                        <Select
+                                            value={filters.designation_id !== 0 ? filters.designation_id.toString() : ""}
+                                            onValueChange={(value) => setFilters((prev) => ({
+                                                ...prev,
+                                                designation_id: parseInt(value) || 0,
+                                            }))}
+                                        >
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select a Designation"/>
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {designations.map((designation) => (
+                                                    <SelectItem key={designation.id} value={designation.id.toString()}>
+                                                        {designation.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        {filters.designation_id !== 0 && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
+                                                onClick={() => clearFilter('designation_id')}
+                                            >
+                                                <X className="h-4 w-4"/>
+                                            </Button>
+                                        )}
+                                    </div>
+                                )}
+
                                 {columnVisibility.status && (
                                     <div className="relative">
                                         <Select
@@ -687,6 +892,7 @@ export default function UsersPage() {
                                     {columnVisibility.email && <TableHead>Email</TableHead>}
                                     {columnVisibility.role && <TableHead>Role</TableHead>}
                                     {columnVisibility.department && <TableHead>Department</TableHead>}
+                                    {columnVisibility.designation && <TableHead>Designation</TableHead>}
                                     {columnVisibility.status && <TableHead className="text-center">Status</TableHead>}
                                     <TableHead></TableHead>
                                 </TableRow>
@@ -694,7 +900,7 @@ export default function UsersPage() {
                             <TableBody>
                                 {isLoading ? (
                                     <TableRow>
-                                        <TableCell colSpan={8} className="h-90 text-center p-0">
+                                        <TableCell colSpan={9} className="h-90 text-center p-0">
                                             <div className="w-full flex flex-col items-center justify-center py-8">
                                                 <div className="flex items-center justify-center space-x-2">
                                                     <div
@@ -711,7 +917,7 @@ export default function UsersPage() {
                                     </TableRow>
                                 ) : users.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={8} className="h-90 text-center">
+                                        <TableCell colSpan={9} className="h-90 text-center">
                                             <div className="flex flex-col items-center justify-center py-6">
                                                 <UsersIcon className="h-10 w-10 text-muted-foreground/40 mb-2"/>
                                                 <p className="text-sm text-muted-foreground">No users found</p>
@@ -748,6 +954,8 @@ export default function UsersPage() {
                                                 className="truncate max-w-[150px]">{user.role || "—"}</TableCell>}
                                             {columnVisibility.department && <TableCell
                                                 className="truncate max-w-[150px]">{user.department || "—"}</TableCell>}
+                                            {columnVisibility.designation && <TableCell
+                                                className="truncate max-w-[150px]">{user.designation || "—"}</TableCell>}
                                             {columnVisibility.status &&
                                                 <TableCell className="max-w-[100px] text-center">
                                                 <span className={cn(
@@ -773,6 +981,10 @@ export default function UsersPage() {
                                                             <DropdownMenuItem onClick={() => handleUpdate(user)}>
                                                                 <Pencil className="mr-2 h-4 w-4"/>
                                                                 Update
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => handleViewHistory(user)}>
+                                                                <HistoryIcon className="mr-2 h-4 w-4"/>
+                                                                History
                                                             </DropdownMenuItem>
                                                             <DropdownMenuItem
                                                                 onClick={() => handleDelete(user.id)}
@@ -872,8 +1084,80 @@ export default function UsersPage() {
                 userData={selectedUser}
                 roles={roles}
                 departments={departments}
+                designations={designations}
                 statuses={statuses}
             />
+
+            {/* Designation manager modal */}
+            <DesignationManagerDialog
+                isOpen={isDesignationModalOpen}
+                setIsOpen={designationModalHandler}
+                designations={designations}
+                onChanged={handleDesignationsChanged}
+            />
+
+            <EmployeeNameManagerDialog
+                isOpen={isNameModalOpen}
+                setIsOpen={setIsNameModalOpen}
+                names={employeeNames}
+                onChanged={handleNamesChanged}
+            />
+
+            {/* User history modal */}
+            <Dialog open={historyModal.isOpen} onOpenChange={(open) => !open && closeHistoryModal()}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>
+                            Activity History
+                            {historyModal.user && ` — ${historyModal.user.first_name} ${historyModal.user.last_name}`}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Create, update and delete actions for this account, with date and time
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="max-h-[26rem] overflow-y-auto space-y-4 pr-1">
+                        {historyModal.isLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <div className="flex items-center space-x-2">
+                                    <div className="h-3 w-3 bg-primary/60 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                    <div className="h-3 w-3 bg-primary/60 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                    <div className="h-3 w-3 bg-primary/60 rounded-full animate-bounce"></div>
+                                </div>
+                            </div>
+                        ) : historyModal.entries.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-10">
+                                <HistoryIcon className="h-8 w-8 text-muted-foreground/40 mb-2"/>
+                                <p className="text-sm text-muted-foreground">No history found for this user</p>
+                            </div>
+                        ) : (
+                            historyModal.entries.map((entry) => (
+                                <div key={entry.id} className="flex gap-3 border-b pb-3 last:border-0 last:pb-0">
+                                    <div className="mt-0.5 shrink-0">
+                                        {entry.action === "Created" && <UserPlus className="h-4 w-4 text-green-600"/>}
+                                        {entry.action === "Updated" && <Pencil className="h-4 w-4 text-blue-600"/>}
+                                        {entry.action === "Deleted" && <Trash2 className="h-4 w-4 text-red-600"/>}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className={actionBadgeClass(entry.action)}>{entry.action}</span>
+                                            <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                                {formatDateTime(entry.create_datetime)}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm mt-1">{entry.description}</p>
+                                        {entry.performed_by && (
+                                            <p className="text-xs text-muted-foreground mt-0.5">
+                                                by {entry.performed_by}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* User delete confirm alert */}
             <AlertDialog open={deleteUserAlert.isOpen} onOpenChange={() =>
