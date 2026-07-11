@@ -62,10 +62,14 @@ export default function SignUpPage() {
     const onSubmit = async (data: z.infer<typeof signUpSchema>) => {
         try {
             setIsSubmitting(true);
+            // const selected = names.find(n => n.id.toString() === data.fullNameId);
+            // const parts = (selected?.full_name || "").trim().split(/\s+/);
+            // const first_name = parts[0] || "";
+            // const last_name = parts.slice(1).join(" ") || first_name;
             const selected = names.find(n => n.id.toString() === data.fullNameId);
-            const parts = (selected?.full_name || "").trim().split(/\s+/);
-            const first_name = parts[0] || "";
-            const last_name = parts.slice(1).join(" ") || first_name;
+const parts = (selected?.full_name || "").trim().split(/\s+/);
+const first_name = parts[0] || "";
+const last_name = parts.slice(1).join(" ");   
 
             const response = await api.post('/v1/system_user/', {
                 email: data.email,
