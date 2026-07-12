@@ -983,7 +983,7 @@ interface ApiResponse<T> {
 interface LetterStat {
     status_id: number;
     count: number;
-    status: string;
+    status_name: string;
 }
 
 const pageSizeOptions = [5, 10, 20, 50];
@@ -1184,7 +1184,7 @@ export default function LetterDashboard() {
     // reordered/renamed in the `status` table.
     const getStatCount = (statusName: string): number => {
         const stat = letterStats.find(
-            (s) => s.status?.toLowerCase() === statusName.toLowerCase()
+            (s) => s.status_name?.toLowerCase() === statusName.toLowerCase()
         );
         return stat?.count ?? 0;
     };
@@ -1195,7 +1195,7 @@ export default function LetterDashboard() {
     // doesn't appear in letterStats) instead of hardcoding an id.
     const handleStatsClick = (statusName: string): void => {
         const stat = letterStats.find(
-            (s) => s.status?.toLowerCase() === statusName.toLowerCase()
+            (s) => s.status_name?.toLowerCase() === statusName.toLowerCase()
         );
         const fallback = statuses.find(
             (s) => s.name?.toLowerCase() === statusName.toLowerCase()
