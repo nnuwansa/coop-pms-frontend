@@ -201,7 +201,7 @@ const last_name = parts.slice(1).join(" ");
                                     <FormControl>
                                         <div className="relative">
                                             <IdCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"/>
-                                            <Input disabled={isSubmitting} placeholder="e.g. EMP0123"
+                                            <Input disabled={isSubmitting} 
                                                 className="pl-9 h-10 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700" {...field}/>
                                         </div>
                                     </FormControl>
@@ -216,7 +216,7 @@ const last_name = parts.slice(1).join(" ");
                                         <FormControl>
                                             <div className="relative">
                                                 <FileBadge2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"/>
-                                                <Input disabled={isSubmitting} placeholder="e.g. 200012345678"
+                                                <Input disabled={isSubmitting} 
                                                     className="pl-9 h-10 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700" {...field}/>
                                             </div>
                                         </FormControl>
