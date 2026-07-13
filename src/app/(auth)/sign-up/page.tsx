@@ -13,6 +13,10 @@ import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/c
 import {Form, FormControl, FormField, FormItem, FormLabel, FormMessage,} from '@/components/ui/form';
 import {Eye, EyeOff, Loader2, Mail, Lock, IdCard, FileBadge2} from "lucide-react";
 import api from "@/lib/api";
+import {Check, ChevronsUpDown} from "lucide-react";
+import {Popover, PopoverContent, PopoverTrigger} from "@/components/ui/popover";
+import {Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList} from "@/components/ui/command";
+import {cn} from "@/lib/utils";
 
 const signUpSchema = z.object({
     fullNameId: z.string().min(1, 'Please select your name'),
@@ -36,9 +40,10 @@ export default function SignUpPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
-
     const [names, setNames] = useState<{id: number; full_name: string}[]>([]);
     const [designations, setDesignations] = useState<{id: number; name: string}[]>([]);
+    const [nameSearch, setNameSearch] = useState("");
+const [designationSearch, setDesignationSearch] = useState("");
 
     useEffect(() => {
         api.get('/v1/employee_name/public-list').then(r => setNames(r.data.data)).catch(console.error);
@@ -126,23 +131,55 @@ const last_name = parts.slice(1).join(" ");
                     <Form {...form}>
                         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                             <FormField control={form.control} name="fullNameId" render={({field}) => (
-                                <FormItem>
+                                <FormItem className="flex flex-col">
                                     <FormLabel className="text-gray-700 dark:text-gray-300 text-sm">Full name</FormLabel>
-                                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting}>
-                                        <FormControl>
-                                            <SelectTrigger className="h-10 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700">
-                                                <SelectValue placeholder="Select your name"/>
-                                            </SelectTrigger>
-                                        </FormControl>
-                                        <SelectContent>
-                                            {names.map((n) => (
-                                                <SelectItem key={n.id} value={n.id.toString()}>{n.full_name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <FormControl>
+                                                <Button
+                                                    variant="outline"
+                                                    role="combobox"
+                                                    disabled={isSubmitting}
+                                                    className={cn(
+                                                        "h-10 w-full justify-between font-normal bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700",
+                                                        !field.value && "text-muted-foreground"
+                                                    )}
+                                                >
+                                                    <span className="truncate text-start">
+                                                        {field.value
+                                                            ? names.find(n => n.id.toString() === field.value)?.full_name
+                                                            : "Select your name"}
+                                                    </span>
+                                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
+                                                </Button>
+                                            </FormControl>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                            <Command filter={() => 1}>
+                                                <CommandInput placeholder="Search name..." value={nameSearch} onValueChange={setNameSearch}/>
+                                                <CommandList>
+                                                    <CommandEmpty>No name found.</CommandEmpty>
+                                                    <CommandGroup>
+                                                        {names
+                                                            .filter(n => !nameSearch || n.full_name.toLowerCase().includes(nameSearch.toLowerCase()))
+                                                            .map(n => (
+                                                                <CommandItem
+                                                                    key={n.id}
+                                                                    value={n.id.toString()}
+                                                                    onSelect={() => field.onChange(n.id.toString())}
+                                                                >
+                                                                    <Check className={cn("mr-2 h-4 w-4", field.value === n.id.toString() ? "opacity-100" : "opacity-0")}/>
+                                                                    {n.full_name}
+                                                                </CommandItem>
+                                                            ))}
+                                                    </CommandGroup>
+                                                </CommandList>
+                                            </Command>
+                                        </PopoverContent>
+                                    </Popover>
                                     <FormMessage/>
                                 </FormItem>
-                            )}/>
+)}/>
 
                             <FormField control={form.control} name="email" render={({field}) => (
                                 <FormItem>
@@ -187,20 +224,52 @@ const last_name = parts.slice(1).join(" ");
                                     </FormItem>
                                 )}/>
                                 <FormField control={form.control} name="designationId" render={({field}) => (
-                                    <FormItem>
+                                    <FormItem className="flex flex-col">
                                         <FormLabel className="text-gray-700 dark:text-gray-300 text-sm">Designation</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting}>
-                                            <FormControl>
-                                                <SelectTrigger className="h-10 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700">
-                                                    <SelectValue placeholder="Select designation"/>
-                                                </SelectTrigger>
-                                            </FormControl>
-                                            <SelectContent>
-                                                {designations.map((d) => (
-                                                    <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <Popover>
+                                            <PopoverTrigger asChild>
+                                                <FormControl>
+                                                    <Button
+                                                        variant="outline"
+                                                        role="combobox"
+                                                        disabled={isSubmitting}
+                                                        className={cn(
+                                                            "h-10 w-full justify-between font-normal bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700",
+                                                            !field.value && "text-muted-foreground"
+                                                        )}
+                                                    >
+                                                        <span className="truncate text-start">
+                                                            {field.value
+                                                                ? designations.find(d => d.id.toString() === field.value)?.name
+                                                                : "Select designation"}
+                                                        </span>
+                                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
+                                                    </Button>
+                                                </FormControl>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                                <Command filter={() => 1}>
+                                                    <CommandInput placeholder="Search designation..." value={designationSearch} onValueChange={setDesignationSearch}/>
+                                                    <CommandList>
+                                                        <CommandEmpty>No designation found.</CommandEmpty>
+                                                        <CommandGroup>
+                                                            {designations
+                                                                .filter(d => !designationSearch || d.name.toLowerCase().includes(designationSearch.toLowerCase()))
+                                                                .map(d => (
+                                                                    <CommandItem
+                                                                        key={d.id}
+                                                                        value={d.id.toString()}
+                                                                        onSelect={() => field.onChange(d.id.toString())}
+                                                                    >
+                                                                        <Check className={cn("mr-2 h-4 w-4", field.value === d.id.toString() ? "opacity-100" : "opacity-0")}/>
+                                                                        {d.name}
+                                                                    </CommandItem>
+                                                                ))}
+                                                        </CommandGroup>
+                                                    </CommandList>
+                                                </Command>
+                                            </PopoverContent>
+                                        </Popover>
                                         <FormMessage/>
                                     </FormItem>
                                 )}/>
