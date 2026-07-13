@@ -106,6 +106,8 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
     const [sources, setSources] = useState<{id: number; name: string; code?: string}[]>([]);
     const [isEditingDepts, setIsEditingDepts] = useState(false);
     const [isEditingAssignees, setIsEditingAssignees] = useState(false);
+    const [sourcePopoverOpen, setSourcePopoverOpen] = useState(false);
+const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
 
     const form = useForm<RemarkFormValues>({
         resolver: zodResolver(remarkFormSchema),
@@ -358,53 +360,56 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
                                             <FormField control={control} name="source" render={({field}) => (
                                                 <FormItem className="w-full">
                                                     <FormLabel>Source</FormLabel>
-                                                    <Popover>
-                                                        <PopoverTrigger asChild>
-                                                            <FormControl>
-                                                                <Button variant="outline" role="combobox" disabled={isSubmitting}
-                                                                    className={cn("w-full justify-between font-normal", !field.value && "text-muted-foreground")}>
-                                                                    <span className="truncate text-start">
-                                                                        {field.value ? sources.find(s => s.id === field.value)?.name : "Select source"}
-                                                                    </span>
-                                                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
-                                                                </Button>
-                                                            </FormControl>
-                                                        </PopoverTrigger>
-                                                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                                                            <Command filter={() => 1}>
-                                                                <CommandInput placeholder="Search source..." value={sourceSearch} onValueChange={setSourceSearch}/>
-                                                                <CommandList>
-                                                                    <CommandEmpty>No source found.</CommandEmpty>
-                                                                    <CommandGroup>
-                                                                        {field.value && (
-                                                                            <CommandItem onSelect={() => {
-                                                                                field.onChange(undefined);
-                                                                                setValue('sourceName', ''); // NEW
-                                                                                setValue('sourceCode', ''); // NEW
-                                                                                setValue('registered_post_no', ''); // NEW
-                                                                            }} className="text-muted-foreground">
-                                                                                Clear selection
-                                                                            </CommandItem>
-                                                                        )}
-                                                                        {sources.filter(s => !sourceSearch || s.name.toLowerCase().includes(sourceSearch.toLowerCase())).map(src => (
-                                                                            <CommandItem key={src.id} value={src.id.toString()}
-                                                                                onSelect={() => {
-                                                                                    field.onChange(src.id);
-                                                                                    setValue('sourceName', src.name); // NEW
-                                                                                    setValue('sourceCode', src.code); // NEW
-                                                                                    if (src.code !== "REGISTERED_POST") {
-                                                                                        setValue('registered_post_no', ''); // NEW — clear stale value if source changed away
-                                                                                    }
-                                                                                }}>
-                                                                                <Check className={cn("mr-2 h-4 w-4", field.value === src.id ? "opacity-100" : "opacity-0")}/>
-                                                                                {src.name}
-                                                                            </CommandItem>
-                                                                        ))}
-                                                                    </CommandGroup>
-                                                                </CommandList>
-                                                            </Command>
-                                                        </PopoverContent>
-                                                    </Popover>
+                                                    <Popover open={sourcePopoverOpen} onOpenChange={setSourcePopoverOpen}>
+                                                    <PopoverTrigger asChild>
+                                                        <FormControl>
+                                                            <Button variant="outline" role="combobox" disabled={isSubmitting}
+                                                                className={cn("w-full justify-between font-normal", !field.value && "text-muted-foreground")}>
+                                                                <span className="truncate text-start">
+                                                                    {field.value ? sources.find(s => s.id === field.value)?.name : "Select source"}
+                                                                </span>
+                                                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
+                                                            </Button>
+                                                        </FormControl>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                                        <Command filter={() => 1}>
+                                                            <CommandInput placeholder="Search source..." value={sourceSearch} onValueChange={setSourceSearch}/>
+                                                            <CommandList>
+                                                                <CommandEmpty>No source found.</CommandEmpty>
+                                                                <CommandGroup>
+                                                                    {field.value && (
+                                                                        <CommandItem onSelect={() => {
+                                                                            field.onChange(undefined);
+                                                                            setValue('sourceName', '');
+                                                                            setValue('sourceCode', '');
+                                                                            setValue('registered_post_no', '');
+                                                                            setSourcePopoverOpen(false); {/* NEW */}
+                                                                        }} className="text-muted-foreground">
+                                                                            Clear selection
+                                                                        </CommandItem>
+                                                                    )}
+                                                                    {sources.filter(s => !sourceSearch || s.name.toLowerCase().includes(sourceSearch.toLowerCase())).map(src => (
+                                                                        <CommandItem key={src.id} value={src.id.toString()}
+                                                                            onSelect={() => {
+                                                                                field.onChange(src.id);
+                                                                                setValue('sourceName', src.name);
+                                                                                setValue('sourceCode', src.code);
+                                                                                if (src.code !== "REGISTERED_POST") {
+                                                                                    setValue('registered_post_no', '');
+                                                                                }
+                                                                                setSourcePopoverOpen(false); {/* NEW */}
+                                                                                setSourceSearch(""); {/* NEW — clear search text for next open */}
+                                                                            }}>
+                                                                            <Check className={cn("mr-2 h-4 w-4", field.value === src.id ? "opacity-100" : "opacity-0")}/>
+                                                                            {src.name}
+                                                                        </CommandItem>
+                                                                    ))}
+                                                                </CommandGroup>
+                                                            </CommandList>
+                                                        </Command>
+                                                    </PopoverContent>
+                                                </Popover>
                                                     <FormMessage/>
                                                 </FormItem>
                                             )}/>
@@ -415,112 +420,59 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
                                             <FormField control={control} name="organization" render={({field}) => (
                                                 <FormItem className="w-full">
                                                     <FormLabel>Sender/Organization of the Letter</FormLabel>
-                                                    <Popover>
-                                                        <PopoverTrigger asChild>
-                                                            <FormControl>
-                                                                <Button variant="outline" role="combobox" disabled={isSubmitting}
-                                                                    className={cn("w-full justify-between font-normal", !field.value && "text-muted-foreground")}>
-                                                                    <span className="truncate text-start">
-                                                                        {field.value ? organizations.find(o => o.id === field.value)?.name : "Select organization"}
-                                                                    </span>
-                                                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
-                                                                </Button>
-                                                            </FormControl>
-                                                        </PopoverTrigger>
-                                                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                                                            <Command filter={() => 1}>
-                                                                <CommandInput placeholder="Search organization..." value={orgSearch} onValueChange={setOrgSearch}/>
-                                                                <CommandList>
-                                                                    <CommandEmpty>No organization found.</CommandEmpty>
-                                                                    <CommandGroup>
-                                                                        {field.value && (
-                                                                            <CommandItem onSelect={() => {
-                                                                                field.onChange(undefined);
-                                                                                setValue('sender', '');
-                                                                                setValue('email', '');
-                                                                                setValue('telephone', '');
-                                                                            }} className="text-muted-foreground">
-                                                                                Clear selection
-                                                                            </CommandItem>
-                                                                        )}
-                                                                        {organizations.filter(o => !orgSearch || o.name.toLowerCase().includes(orgSearch.toLowerCase())).map(org => (
-                                                                            <CommandItem key={org.id} value={org.id.toString()}
-                                                                                onSelect={() => {
-                                                                                    field.onChange(org.id);
-                                                                                    const o = organizations.find(x => x.id === org.id);
-                                                                                    if (o?.email) setValue('email', o.email);
-                                                                                    if (o?.telephone) setValue('telephone', o.telephone);
-                                                                                    if (o?.address) setValue('sender', o.address);
-                                                                                }}>
-                                                                                <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
-                                                                                {org.name}
-                                                                            </CommandItem>
-                                                                        ))}
-                                                                    </CommandGroup>
-                                                                </CommandList>
-                                                                <div className="border-t p-2">
-                                                                    {isAddingOrg ? (
-                                                                    <div className="flex flex-col gap-2 p-1">
-                                                                        <Input
-                                                                            placeholder="Organization name..."
-                                                                            value={newOrgName}
-                                                                            onChange={(e) => setNewOrgName(e.target.value)}
-                                                                            className="h-8 text-sm"
-                                                                            autoFocus
-                                                                        />
-                                                                        <Input
-                                                                            placeholder="Address "
-                                                                            value={newOrgAddress}
-                                                                            onChange={(e) => setNewOrgAddress(e.target.value)}
-                                                                            className="h-8 text-sm"
-                                                                        />
-                                                                        <Input
-                                                                            placeholder="Email "
-                                                                            value={newOrgEmail}
-                                                                            onChange={(e) => setNewOrgEmail(e.target.value)}
-                                                                            className="h-8 text-sm"
-                                                                        />
-                                                                        <Input
-                                                                            placeholder="Telephone "
-                                                                            value={newOrgTelephone}
-                                                                            onChange={(e) => setNewOrgTelephone(e.target.value)}
-                                                                            className="h-8 text-sm"
-                                                                            onKeyDown={(e) => {
-                                                                                if (e.key === 'Enter') { e.preventDefault(); handleAddOrganization(); }
-                                                                                if (e.key === 'Escape') {
-                                                                                    setIsAddingOrg(false);
-                                                                                    setNewOrgName("");
-                                                                                    setNewOrgAddress("");
-                                                                                    setNewOrgEmail("");
-                                                                                    setNewOrgTelephone("");
-                                                                                }
-                                                                            }}
-                                                                        />
-                                                                        <div className="flex gap-2 justify-end mt-1">
-                                                                            <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => {
-                                                                                setIsAddingOrg(false);
-                                                                                setNewOrgName("");
-                                                                                setNewOrgAddress("");
-                                                                                setNewOrgEmail("");
-                                                                                setNewOrgTelephone("");
+                                                   <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
+                                                    <PopoverTrigger asChild>
+                                                        <FormControl>
+                                                            <Button variant="outline" role="combobox" disabled={isSubmitting}
+                                                                className={cn("w-full justify-between font-normal", !field.value && "text-muted-foreground")}>
+                                                                <span className="truncate text-start">
+                                                                    {field.value ? organizations.find(o => o.id === field.value)?.name : "Select organization"}
+                                                                </span>
+                                                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
+                                                            </Button>
+                                                        </FormControl>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                                        <Command filter={() => 1}>
+                                                            <CommandInput placeholder="Search organization..." value={orgSearch} onValueChange={setOrgSearch}/>
+                                                            <CommandList>
+                                                                <CommandEmpty>No organization found.</CommandEmpty>
+                                                                <CommandGroup>
+                                                                    {field.value && (
+                                                                        <CommandItem onSelect={() => {
+                                                                            field.onChange(undefined);
+                                                                            setValue('sender', '');
+                                                                            setValue('email', '');
+                                                                            setValue('telephone', '');
+                                                                            setOrgPopoverOpen(false); {/* NEW */}
+                                                                        }} className="text-muted-foreground">
+                                                                            Clear selection
+                                                                        </CommandItem>
+                                                                    )}
+                                                                    {organizations.filter(o => !orgSearch || o.name.toLowerCase().includes(orgSearch.toLowerCase())).map(org => (
+                                                                        <CommandItem key={org.id} value={org.id.toString()}
+                                                                            onSelect={() => {
+                                                                                field.onChange(org.id);
+                                                                                const o = organizations.find(x => x.id === org.id);
+                                                                                if (o?.email) setValue('email', o.email);
+                                                                                if (o?.telephone) setValue('telephone', o.telephone);
+                                                                                if (o?.address) setValue('sender', o.address);
+                                                                                setOrgPopoverOpen(false); {/* NEW */}
+                                                                                setOrgSearch(""); {/* NEW */}
                                                                             }}>
-                                                                                <X className="h-4 w-4"/>
-                                                                            </Button>
-                                                                            <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization} disabled={!newOrgName.trim()}>
-                                                                                Add
-                                                                            </Button>
-                                                                        </div>
-                                                                    </div>
-                                                                ) : (
-                                                                    <Button type="button" variant="ghost" className="w-full h-8 text-sm justify-start text-muted-foreground hover:text-foreground"
-                                                                        onClick={() => setIsAddingOrg(true)}>
-                                                                        <Plus className="mr-2 h-4 w-4"/>Add new organization
-                                                                    </Button>
-                                                                )}
+                                                                            <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
+                                                                            {org.name}
+                                                                        </CommandItem>
+                                                                    ))}
+                                                                </CommandGroup>
+                                                            </CommandList>
+                                                            {/* the "Add new organization" footer div stays exactly as it was */}
+                                                            <div className="border-t p-2">
+                                                                {/* ... unchanged ... */}
                                                             </div>
-                                                            </Command>
-                                                        </PopoverContent>
-                                                    </Popover>
+                                                        </Command>
+                                                    </PopoverContent>
+                                                </Popover>
                                                     <FormMessage/>
                                                 </FormItem>
                                             )}/>

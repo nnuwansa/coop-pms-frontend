@@ -662,7 +662,11 @@ export default function LetterViewPage() {
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter className="flex-col gap-2 sm:flex-col sm:gap-2">
-                        <Button className="w-full" onClick={handleSaveAndProceed} disabled={isSaving}>
+                        <Button
+                            className="w-full bg-green-600 hover:bg-green-700 text-white dark:bg-green-600 dark:hover:bg-green-700"
+                            onClick={handleSaveAndProceed}
+                            disabled={isSaving}
+                        >
                             {isSaving ? (
                                 <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</>
                             ) : (
