@@ -26,6 +26,7 @@ import {ACCEPTED_FILE_TYPES, CORE_API_URL, MAX_FILE_SIZE} from "@/lib/client-con
 import api from "@/lib/api";
 import {useAuthStore} from "@/store/auth-store";
 import {Checkbox} from "@/components/ui/checkbox";
+import {formatFileSize} from "@/app/(dashboard)/letters/[id]/attachment-preview";
 
 const fileSchema = z.custom<File>()
     .refine((file) => file instanceof File, "Must be a file")
@@ -670,7 +671,7 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
                                                 </div>
                                             </FormControl>
                                             <FormMessage/>
-                                            <div className="space-y-4">
+                                            {/* <div className="space-y-4">
                                                 {attachments?.map((attachment, index) => (
                                                     <div key={index} className="space-y-2">
                                                         <FormField control={control} name={`attachments.${index}.file`} render={() => (
@@ -693,7 +694,37 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
                                                         )}/>
                                                     </div>
                                                 ))}
-                                            </div>
+                                            </div> */}
+
+                                            <div className="space-y-4">
+    {attachments?.map((attachment, index) => (
+        <div key={index} className="space-y-2">
+            <FormField control={control} name={`attachments.${index}.file`} render={() => (
+                <FormItem><FormMessage/></FormItem>
+            )}/>
+            <FormField control={control} name={`attachments.${index}.name`} render={({field}) => (
+                <FormItem>
+                    <FormControl>
+                        <div className="flex gap-2 items-center relative">
+                            <Input {...field} placeholder="Enter file name" disabled={isSubmitting}/>
+                            <Button type="button" variant="ghost" size="icon"
+                                className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+                                onClick={() => removeAttachment(index)} disabled={isSubmitting}>
+                                <X className="h-4 w-4"/>
+                            </Button>
+                        </div>
+                    </FormControl>
+                    <FormMessage/>
+                </FormItem>
+            )}/>
+            {/* NEW: file size display */}
+            <div className="flex justify-between text-xs text-muted-foreground px-1">
+                <span className="truncate">{attachment.file.name}</span>
+                <span>{formatFileSize(attachment.file.size)}</span>
+            </div>
+        </div>
+    ))}
+</div>
                                         </FormItem>
                                     )}/>
 
