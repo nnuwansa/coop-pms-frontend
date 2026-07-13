@@ -289,7 +289,8 @@ function AttachmentChip({att, onPreview}: {att: AttachmentItem; onPreview: (att:
 export default function LetterViewPage() {
     const {id} = useParams<{id: string}>();
     const router = useRouter();
-    const {hasPermission} = useAuthStore();
+    const {hasPermission, user} = useAuthStore();
+const allowedStatusIds = user?.allowed_status_ids ?? [];
 
     const [letter, setLetter] = useState<LetterDetail | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -309,6 +310,7 @@ export default function LetterViewPage() {
     const [isEditingAssignees, setIsEditingAssignees] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [previewAttachment, setPreviewAttachment] = useState<AttachmentItem | null>(null);
+    
 
     // NEW — remark edit/delete audit log state
     const [remarkHistory, setRemarkHistory] = useState<RemarkHistoryEntry[]>([]);
@@ -1119,7 +1121,7 @@ export default function LetterViewPage() {
                     <Card>
                         <CardContent className="pt-6 space-y-5">
                             {/* Status */}
-                            <div className="space-y-2">
+                            {/* <div className="space-y-2">
                                 <p className="text-sm font-medium">Status</p>
                                 <Select
                                     value={selectedStatusId ? selectedStatusId.toString() : ""}
@@ -1140,7 +1142,36 @@ export default function LetterViewPage() {
                                         Current: {letter.status.name}
                                     </span>
                                 )}
-                            </div>
+                            </div> */}
+                            {/* Status */}
+<div className="space-y-2">
+    <p className="text-sm font-medium">Status</p>
+    <Select
+    value={selectedStatusId ? selectedStatusId.toString() : ""}
+    onValueChange={(v) => setSelectedStatusId(parseInt(v) || 0)}
+    disabled={!hasPermission('letter.change_status')}   // CHANGED
+>
+        <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select Status"/>
+        </SelectTrigger>
+        <SelectContent>
+            {allStatuses
+                .filter(s =>
+                    !allowedStatusIds?.length ||               // no restriction set → show all
+                    allowedStatusIds.includes(s.id) ||          // status this role is allowed to set
+                    s.id === selectedStatusId                   // always show the letter's current status, even if not settable
+                )
+                .map(s => (
+                    <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
+                ))}
+        </SelectContent>
+    </Select>
+    {letter.status && (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusClassName(letter.status.name)}`}>
+            Current: {letter.status.name}
+        </span>
+    )}
+</div>
 
                             <Separator/>
 
@@ -1148,7 +1179,7 @@ export default function LetterViewPage() {
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <p className="text-sm font-medium">Departments</p>
-                                    {hasPermission('letter.update') && (
+                                    {hasPermission('letter.change_department') && (
                                         <Button
                                             type="button"
                                             variant="ghost"
@@ -1167,7 +1198,7 @@ export default function LetterViewPage() {
                                             return dept ? (
                                                 <Badge key={deptId} variant="secondary" className="text-xs gap-1">
                                                     {dept.name}
-                                                    {hasPermission('letter.update') && isEditingDepts && (
+                                                    {hasPermission('letter.change_department') && isEditingDepts && (
                                                         <button onClick={() => toggleDept(deptId)} className="ml-0.5 hover:text-destructive">
                                                             <X className="h-3 w-3"/>
                                                         </button>
@@ -1189,13 +1220,13 @@ export default function LetterViewPage() {
                                                     id={`dept-${dept.id}`}
                                                     checked={selectedDeptIds.includes(dept.id)}
                                                     onCheckedChange={() => toggleDept(dept.id)}
-                                                    disabled={!hasPermission('letter.update')}
+                                                    disabled={!hasPermission('letter.change_department')}
                                                 />
                                                 <label htmlFor={`dept-${dept.id}`} className="text-sm cursor-pointer leading-tight">
                                                     {dept.name}
                                                 </label>
                                             </div>
-                                        ))}
+                                        ))} 
                                     </div>
                                 )}
                             </div>
@@ -1205,7 +1236,7 @@ export default function LetterViewPage() {
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <p className="text-sm font-medium">Assignees</p>
-                                    {hasPermission('letter.update') && (
+                                    {hasPermission('letter.assign') && (
                                         <Button
                                             type="button"
                                             variant="ghost"
@@ -1224,7 +1255,7 @@ export default function LetterViewPage() {
                                             return assignee ? (
                                                 <Badge key={assigneeId} variant="secondary" className="text-xs gap-1">
                                                     {assignee.name}
-                                                    {hasPermission('letter.update') && isEditingAssignees && (
+                                                    {hasPermission('letter.assign') && isEditingAssignees && (
                                                         <button onClick={() => toggleAssignee(assigneeId)} className="ml-0.5 hover:text-destructive">
                                                             <X className="h-3 w-3"/>
                                                         </button>
@@ -1246,7 +1277,7 @@ export default function LetterViewPage() {
                                                     id={`assignee-${a.id}`}
                                                     checked={selectedAssigneeIds.includes(a.id)}
                                                     onCheckedChange={() => toggleAssignee(a.id)}
-                                                    disabled={!hasPermission('letter.update')}
+                                                    disabled={!hasPermission('letter.assign')}
                                                 />
                                                 <label htmlFor={`assignee-${a.id}`} className="text-sm cursor-pointer leading-tight">
                                                     {a.name}
@@ -1258,12 +1289,12 @@ export default function LetterViewPage() {
                             </div>
 
                             {/* Save */}
-                            {hasPermission('letter.update') && (
+                            {(hasPermission('letter.change_status') || hasPermission('letter.change_department') || hasPermission('letter.assign')) && (
                                 <Button className="w-full" onClick={handleSave} disabled={isSaving || !isDirty}>
                                     {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</> : <><Save className="mr-2 h-4 w-4"/>Save Changes</>}
                                 </Button>
                             )}
-                            {hasPermission('letter.update') && isDirty && !isSaving && (
+                            {(hasPermission('letter.change_status') || hasPermission('letter.change_department') || hasPermission('letter.assign')) && isDirty && !isSaving && (
                                 <p className="text-xs text-amber-600 dark:text-amber-400 text-center -mt-2">
                                     You have unsaved changes.
                                 </p>

@@ -28,7 +28,10 @@ interface PermissionCategory {
     action: "radio" | "check";
     permissions: Permission[];
 }
-
+interface StatusOption {
+    id: number;
+    name: string;
+}
 interface PermissionsResponse {
     success: boolean;
     message: string;
@@ -68,6 +71,8 @@ export function PermissionsManager({isOpen, onClose, selectedRole, onSuccess}: P
     });
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [isSaving, setIsSaving] = useState<boolean>(false);
+    const [statuses, setStatuses] = useState<StatusOption[]>([]);
+const [selectedStatusIds, setSelectedStatusIds] = useState<number[]>([]);
 
 // Move fetchPermissions to useCallback to include in dependency arrays
     const fetchPermissions = useCallback(async () => {
@@ -86,41 +91,140 @@ export function PermissionsManager({isOpen, onClose, selectedRole, onSuccess}: P
         }
     }, []);
 
-// Keep fetchRolePermissions with selectedRole dependency only
-    const fetchRolePermissions = useCallback(async (roleId: string, currentPermissions: PermissionCategory[]) => {
-        setIsLoading(true);
-        try {
-            const response = await api.get(`/v1/role/${roleId}/permissions`);
-            const data: RolePermissionsResponse = await response.data;
+// // Keep fetchRolePermissions with selectedRole dependency only
+//     const fetchRolePermissions = useCallback(async (roleId: string, currentPermissions: PermissionCategory[]) => {
+//         setIsLoading(true);
+//         try {
+//             const response = await api.get(`/v1/role/${roleId}/permissions`);
+//             const data: RolePermissionsResponse = await response.data;
 
-            // Initialize form data with selected permissions
-            const newFormData: PermissionFormData = {
-                permissionIds: [...data.data],
-                radioSelections: {},
-            };
+//             // Initialize form data with selected permissions
+//             const newFormData: PermissionFormData = {
+//                 permissionIds: [...data.data],
+//                 radioSelections: {},
+//             };
 
-            // Handle radio button groups
-            currentPermissions.forEach(category => {
-                if (category.action === "radio") {
-                    // Find the highest-level permission in each radio group that is selected
-                    const selectedRadioPermissions = category.permissions.filter(p =>
-                        data.data.includes(p.id)
-                    ).sort((a, b) => b.id - a.id);
+//             // Handle radio button groups
+//             currentPermissions.forEach(category => {
+//                 if (category.action === "radio") {
+//                     // Find the highest-level permission in each radio group that is selected
+//                     const selectedRadioPermissions = category.permissions.filter(p =>
+//                         data.data.includes(p.id)
+//                     ).sort((a, b) => b.id - a.id);
 
-                    if (selectedRadioPermissions.length > 0) {
-                        newFormData.radioSelections[category.category] = selectedRadioPermissions[0].id;
-                    }
+//                     if (selectedRadioPermissions.length > 0) {
+//                         newFormData.radioSelections[category.category] = selectedRadioPermissions[0].id;
+//                     }
+//                 }
+//             });
+
+//             setFormData(newFormData);
+//         } catch (error) {
+//             console.error(`Error fetching permissions for role ${roleId}:`, error);
+//             toast.error(`Failed to load permissions for ${selectedRole?.name}. Please try again.`);
+//         } finally {
+//             setIsLoading(false);
+//         }
+//     }, [selectedRole?.name]);
+
+// Add near other interfaces
+interface StatusOption {
+    id: number;
+    name: string;
+}
+
+
+
+// Fetch statuses alongside permissions
+const fetchStatuses = useCallback(async () => {
+    try {
+        const response = await api.get('/v1/status/list');
+        setStatuses(response.data.data || []);
+    } catch (error) {
+        console.error('Error fetching statuses:', error);
+    }
+}, []);
+
+// Update fetchRolePermissions to also read status_ids from the new response shape
+const fetchRolePermissions = useCallback(async (roleId: string, currentPermissions: PermissionCategory[]) => {
+    setIsLoading(true);
+    try {
+        const response = await api.get(`/v1/role/${roleId}/permissions`);
+        const data = response.data.data; // { permission_ids: number[], status_ids: number[] }
+
+        const newFormData: PermissionFormData = {
+            permissionIds: [...(data.permission_ids || [])],
+            radioSelections: {},
+        };
+
+        currentPermissions.forEach(category => {
+            if (category.action === "radio") {
+                const selectedRadioPermissions = category.permissions.filter(p =>
+                    data.permission_ids.includes(p.id)
+                ).sort((a, b) => b.id - a.id);
+
+                if (selectedRadioPermissions.length > 0) {
+                    newFormData.radioSelections[category.category] = selectedRadioPermissions[0].id;
                 }
-            });
+            }
+        });
 
-            setFormData(newFormData);
-        } catch (error) {
-            console.error(`Error fetching permissions for role ${roleId}:`, error);
-            toast.error(`Failed to load permissions for ${selectedRole?.name}. Please try again.`);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [selectedRole?.name]);
+        setFormData(newFormData);
+        setSelectedStatusIds(data.status_ids || []);   // NEW
+    } catch (error) {
+        console.error(`Error fetching permissions for role ${roleId}:`, error);
+        toast.error(`Failed to load permissions for ${selectedRole?.name}. Please try again.`);
+    } finally {
+        setIsLoading(false);
+    }
+}, [selectedRole?.name]);
+
+// Update the load effect to also fetch statuses
+useEffect(() => {
+    if (isOpen && selectedRole) {
+        const loadData = async () => {
+            try {
+                const loadedPermissions = await fetchPermissions();
+                await fetchStatuses();   // NEW
+                if (loadedPermissions.length > 0) {
+                    await fetchRolePermissions(selectedRole.id, loadedPermissions);
+                }
+            } catch (error) {
+                console.error("Error in permission loading sequence:", error);
+            }
+        };
+        loadData().catch((error) => console.error("Error loading permissions:", error));
+    }
+}, [isOpen, selectedRole, fetchPermissions, fetchRolePermissions, fetchStatuses]);
+
+// New toggle handler
+const toggleStatus = (statusId: number) => {
+    setSelectedStatusIds(prev =>
+        prev.includes(statusId) ? prev.filter(id => id !== statusId) : [...prev, statusId]
+    );
+};
+
+// Update submit to send status_ids
+const handlePermissionSubmit = async () => {
+    if (!selectedRole) return;
+
+    setIsSaving(true);
+    try {
+        const response = await api.put(`/v1/role/${selectedRole.id}/permissions`, {
+            permission_ids: formData.permissionIds,
+            status_ids: selectedStatusIds,   // NEW
+        });
+
+        toast.success(response?.data.message);
+        onClose();
+        onSuccess?.();
+    } catch (error) {
+        console.error('Error updating permissions:', error);
+        toast.error(error.response?.data.message || 'Something went wrong. Please try again');
+    } finally {
+        setIsSaving(false);
+    }
+};
 
 // Combined loading effect without dependency issues
     useEffect(() => {
@@ -185,27 +289,7 @@ export function PermissionsManager({isOpen, onClose, selectedRole, onSuccess}: P
         });
     };
 
-    const handlePermissionSubmit = async () => {
-        if (!selectedRole) return;
-
-        setIsSaving(true);
-        try {
-            const response = await api.put(`/v1/role/${selectedRole.id}/permissions`, {
-                permission_ids: formData.permissionIds,
-            });
-
-            toast.success(response?.data.message);
-            onClose();
-            onSuccess?.();
-
-        } catch (error) {
-            console.error('Error updating permissions:', error);
-            toast.error(error.response?.data.message || 'Something went wrong. Please try again');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
+    
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-3xl">
@@ -257,28 +341,79 @@ export function PermissionsManager({isOpen, onClose, selectedRole, onSuccess}: P
                                     ) : (
                                         <div className="space-y-4">
                                             {category.permissions.map((permission) => (
-                                                <div key={permission.id} className="flex items-start space-x-4">
-                                                    <Checkbox
-                                                        disabled={isSaving}
-                                                        id={`check-${permission.id}`}
-                                                        checked={formData.permissionIds.includes(permission.id)}
-                                                        onCheckedChange={(checked) =>
-                                                            handlePermissionChange(permission.id, !!checked)
-                                                        }
-                                                    />
-                                                    <div className="space-y-1 leading-none">
-                                                        <Label
-                                                            htmlFor={`check-${permission.id}`}
-                                                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                                        >
-                                                            {permission.name}
-                                                        </Label>
-                                                        <p className="text-sm text-muted-foreground">
-                                                            {permission.description}
-                                                        </p>
-                                                    </div>
+                                                // <div key={permission.id} className="flex items-start space-x-4">
+                                                //     <Checkbox
+                                                //         disabled={isSaving}
+                                                //         id={`check-${permission.id}`}
+                                                //         checked={formData.permissionIds.includes(permission.id)}
+                                                //         onCheckedChange={(checked) =>
+                                                //             handlePermissionChange(permission.id, !!checked)
+                                                //         }
+                                                //     />
+                                                //     <div className="space-y-1 leading-none">
+                                                //         <Label
+                                                //             htmlFor={`check-${permission.id}`}
+                                                //             className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                                //         >
+                                                //             {permission.name}
+                                                //         </Label>
+                                                //         <p className="text-sm text-muted-foreground">
+                                                //             {permission.description}
+                                                //         </p>
+                                                //     </div>
+                                                // </div>
+                                                <div className="space-y-4">
+                                                    {category.permissions.map((permission) => (
+                                                        <div key={permission.id} className="space-y-3">
+                                                            <div className="flex items-start space-x-4">
+                                                                <Checkbox
+                                                                    disabled={isSaving}
+                                                                    id={`check-${permission.id}`}
+                                                                    checked={formData.permissionIds.includes(permission.id)}
+                                                                    onCheckedChange={(checked) =>
+                                                                        handlePermissionChange(permission.id, !!checked)
+                                                                    }
+                                                                />
+                                                                <div className="space-y-1 leading-none">
+                                                                    <Label
+                                                                        htmlFor={`check-${permission.id}`}
+                                                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                                                    >
+                                                                        {permission.name}
+                                                                    </Label>
+                                                                    <p className="text-sm text-muted-foreground">
+                                                                        {permission.description}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* NEW — per-status checklist, shown only under "Change Letter Status" once it's checked */}
+                                                            {permission.code === "letter.change_status" && formData.permissionIds.includes(permission.id) && (
+                                                                <div className="ml-8 border rounded-md p-3 space-y-2 bg-muted/30">
+                                                                    <p className="text-xs font-medium text-muted-foreground mb-1">
+                                                                        Allowed statuses this role can set a letter to:
+                                                                    </p>
+                                                                    {statuses.length === 0 ? (
+                                                                        <p className="text-sm text-muted-foreground">No statuses available</p>
+                                                                    ) : statuses.map(status => (
+                                                                        <div key={status.id} className="flex items-center space-x-2">
+                                                                            <Checkbox
+                                                                                disabled={isSaving}
+                                                                                id={`status-${status.id}`}
+                                                                                checked={selectedStatusIds.includes(status.id)}
+                                                                                onCheckedChange={() => toggleStatus(status.id)}
+                                                                            />
+                                                                            <label htmlFor={`status-${status.id}`} className="text-sm cursor-pointer">
+                                                                                {status.name}
+                                                                            </label>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                            ))}
+                                                    ))}
                                         </div>
                                     )}
                                 </div>

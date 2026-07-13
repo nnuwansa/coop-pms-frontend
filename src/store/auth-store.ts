@@ -8,10 +8,9 @@ interface User {
     last_name: string;
     email: string;
     permissions: string[];
-
-    [key: string]: any; // For any additional user properties
+    allowed_status_ids: number[];   
+    [key: string]: any;
 }
-
 interface AuthState {
     // State
     user: User | null;
