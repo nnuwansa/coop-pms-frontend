@@ -20,6 +20,7 @@ import {format} from "date-fns";
 import {Calendar} from "@/components/ui/calendar";
 import {Popover, PopoverContent, PopoverTrigger} from "@/components/ui/popover";
 import {cn} from "@/lib/utils";
+import {Badge} from "@/components/ui/badge";
 import {CalendarIcon, Loader2, Plus, X} from "lucide-react";
 import {toast} from "sonner";
 import {ACCEPTED_FILE_TYPES, CORE_API_URL, MAX_FILE_SIZE} from "@/lib/client-config";
@@ -103,6 +104,8 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
     const fileInputRef = useRef<HTMLInputElement>(null);
     const {hasPermission} = useAuthStore();
     const [sources, setSources] = useState<{id: number; name: string; code?: string}[]>([]);
+    const [isEditingDepts, setIsEditingDepts] = useState(false);
+    const [isEditingAssignees, setIsEditingAssignees] = useState(false);
 
     const form = useForm<RemarkFormValues>({
         resolver: zodResolver(remarkFormSchema),
@@ -177,6 +180,8 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
             setNewOrgAddress("");
             setNewOrgEmail("");
             setNewOrgTelephone("");
+            setIsEditingDepts(false);     
+        setIsEditingAssignees(false);  
         }
     };
 
@@ -608,51 +613,122 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
                                     )}/>
 
                                     {/* Departments Multi-select */}
-                                    <FormField control={control} name="department_ids" render={() => (
-                                        <FormItem>
-                                            <FormLabel>Departments</FormLabel>
-                                            <div className="border rounded-md p-3 grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
-                                                {departments.length === 0 ? (
-                                                    <p className="text-sm text-muted-foreground col-span-2">No departments available</p>
-                                                ) : departments.map(dept => (
-                                                    <div key={dept.id} className="flex items-center space-x-2">
-                                                        <Checkbox
-                                                            id={`dept-${dept.id}`}
-                                                            checked={selectedDepartmentIds.includes(dept.id)}
-                                                            onCheckedChange={() => toggleDepartment(dept.id)}
-                                                            disabled={isSubmitting}
-                                                        />
-                                                        <label htmlFor={`dept-${dept.id}`} className="text-sm cursor-pointer">{dept.name}</label>
+                                   
+                                        <FormField control={control} name="department_ids" render={() => (
+                                            <FormItem>
+                                                <div className="flex items-center justify-between">
+                                                    <FormLabel>Departments</FormLabel>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-7 px-2 text-xs"
+                                                        onClick={() => setIsEditingDepts(prev => !prev)}
+                                                        disabled={isSubmitting}
+                                                    >
+                                                        {isEditingDepts ? 'Done' : 'Edit'}
+                                                    </Button>
+                                                </div>
+
+                                                {selectedDepartmentIds.length > 0 ? (
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {selectedDepartmentIds.map(deptId => {
+                                                            const dept = departments.find(d => d.id === deptId);
+                                                            return dept ? (
+                                                                <Badge key={deptId} variant="secondary" className="text-xs gap-1">
+                                                                    {dept.name}
+                                                                    {isEditingDepts && (
+                                                                        <button type="button" onClick={() => toggleDepartment(deptId)} className="ml-0.5 hover:text-destructive">
+                                                                            <X className="h-3 w-3"/>
+                                                                        </button>
+                                                                    )}
+                                                                </Badge>
+                                                            ) : null;
+                                                        })}
                                                     </div>
-                                                ))}
-                                            </div>
-                                            <FormMessage/>
-                                        </FormItem>
-                                    )}/>
+                                                ) : (
+                                                    <p className="text-sm text-muted-foreground">No departments selected</p>
+                                                )}
+
+                                                {isEditingDepts && (
+                                                    <div className="border rounded-md p-3 grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                                                        {departments.length === 0 ? (
+                                                            <p className="text-sm text-muted-foreground col-span-2">No departments available</p>
+                                                        ) : departments.map(dept => (
+                                                            <div key={dept.id} className="flex items-center space-x-2">
+                                                                <Checkbox
+                                                                    id={`dept-${dept.id}`}
+                                                                    checked={selectedDepartmentIds.includes(dept.id)}
+                                                                    onCheckedChange={() => toggleDepartment(dept.id)}
+                                                                    disabled={isSubmitting}
+                                                                />
+                                                                <label htmlFor={`dept-${dept.id}`} className="text-sm cursor-pointer">{dept.name}</label>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <FormMessage/>
+                                            </FormItem>
+                                        )}/>
 
                           {/* Assignees Multi-select */}
-                                     <FormField control={control} name="assignee_ids" render={() => (
-                                        <FormItem>
-                                            <FormLabel>Assignees</FormLabel>
-                                            <div className="border rounded-md p-3 grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
-                                                {assignees.length === 0 ? (
-                                                    <p className="text-sm text-muted-foreground col-span-2">No assignees available</p>
-                                                ) : assignees.map(a => (
-                                                    <div key={a.id} className="flex items-center space-x-2">
-                                                        <Checkbox
-                                                            id={`assignee-${a.id}`}
-                                                            checked={selectedAssigneeIds.includes(a.id)}
-                                                            onCheckedChange={() => toggleAssignee(a.id)}
-                                                            disabled={isSubmitting}
-                                                        />
-                                                        <label htmlFor={`assignee-${a.id}`} className="text-sm cursor-pointer">{a.name}</label>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            <FormMessage/>
-                                        </FormItem>
-                                     )}/>
+                                     
+                        <FormField control={control} name="assignee_ids" render={() => (
+                            <FormItem>
+                                <div className="flex items-center justify-between">
+                                    <FormLabel>Assignees</FormLabel>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 px-2 text-xs"
+                                        onClick={() => setIsEditingAssignees(prev => !prev)}
+                                        disabled={isSubmitting}
+                                    >
+                                        {isEditingAssignees ? 'Done' : 'Edit'}
+                                    </Button>
+                                </div>
 
+                                {selectedAssigneeIds.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1">
+                                        {selectedAssigneeIds.map(assigneeId => {
+                                            const a = assignees.find(x => x.id === assigneeId);
+                                            return a ? (
+                                                <Badge key={assigneeId} variant="secondary" className="text-xs gap-1">
+                                                    {a.name}
+                                                    {isEditingAssignees && (
+                                                        <button type="button" onClick={() => toggleAssignee(assigneeId)} className="ml-0.5 hover:text-destructive">
+                                                            <X className="h-3 w-3"/>
+                                                        </button>
+                                                    )}
+                                                </Badge>
+                                            ) : null;
+                                        })}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">No assignees selected</p>
+                                )}
+
+                                {isEditingAssignees && (
+                                    <div className="border rounded-md p-3 grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                                        {assignees.length === 0 ? (
+                                            <p className="text-sm text-muted-foreground col-span-2">No assignees available</p>
+                                        ) : assignees.map(a => (
+                                            <div key={a.id} className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id={`assignee-${a.id}`}
+                                                    checked={selectedAssigneeIds.includes(a.id)}
+                                                    onCheckedChange={() => toggleAssignee(a.id)}
+                                                    disabled={isSubmitting}
+                                                />
+                                                <label htmlFor={`assignee-${a.id}`} className="text-sm cursor-pointer">{a.name}</label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <FormMessage/>
+                            </FormItem>
+                        )}/>
                                     {/* Attachments */}
                                     <FormField control={control} name="attachments" render={() => (
                                         <FormItem>
