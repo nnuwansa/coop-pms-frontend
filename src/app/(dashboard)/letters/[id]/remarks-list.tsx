@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import api from "@/lib/api";
 import {useAuthStore} from "@/store/auth-store";
-import {formatDate} from "@/lib/utils";
+import {formatDate, formatDateTime} from "@/lib/utils";
 import {AttachmentPreview} from "@/app/(dashboard)/letters/[id]/attachment-preview";
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
@@ -151,7 +151,7 @@ export function RemarksList({letterId, remarks, onRefresh}: RemarksListProps) {
                             <span className="font-medium text-foreground">
                                 {remark.created_by || "Unknown user"}
                             </span>
-                            <span className="whitespace-nowrap">{formatDate(remark.create_datetime)}</span>
+                            <span className="whitespace-nowrap">{formatDateTime(remark.create_datetime)}</span>
                             {remark.subject_no && <span>| Subject No: {remark.subject_no}</span>}
                             {remark.department && <span>| {remark.department}</span>}
                             {remark.assignee && <span>| {remark.assignee}</span>}
@@ -307,7 +307,7 @@ export function RemarkHistoryList({letterId}: RemarkHistoryListProps) {
                                 {entry.action === 'delete' ? 'Deleted' : 'Edited'}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                                {formatDate(entry.create_datetime)}
+                                {formatDateTime(entry.create_datetime)}
                             </span>
                         </div>
 
