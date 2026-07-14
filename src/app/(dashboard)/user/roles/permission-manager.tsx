@@ -127,11 +127,8 @@ const [selectedStatusIds, setSelectedStatusIds] = useState<number[]>([]);
 //         }
 //     }, [selectedRole?.name]);
 
-// Add near other interfaces
-interface StatusOption {
-    id: number;
-    name: string;
-}
+
+
 
 
 
@@ -338,89 +335,64 @@ const handlePermissionSubmit = async () => {
                                                 </div>
                                             ))}
                                         </RadioGroup>
-                                    ) : (
-                                        <div className="space-y-4">
-                                            {category.permissions.map((permission) => (
-                                                // <div key={permission.id} className="flex items-start space-x-4">
-                                                //     <Checkbox
-                                                //         disabled={isSaving}
-                                                //         id={`check-${permission.id}`}
-                                                //         checked={formData.permissionIds.includes(permission.id)}
-                                                //         onCheckedChange={(checked) =>
-                                                //             handlePermissionChange(permission.id, !!checked)
-                                                //         }
-                                                //     />
-                                                //     <div className="space-y-1 leading-none">
-                                                //         <Label
-                                                //             htmlFor={`check-${permission.id}`}
-                                                //             className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                                //         >
-                                                //             {permission.name}
-                                                //         </Label>
-                                                //         <p className="text-sm text-muted-foreground">
-                                                //             {permission.description}
-                                                //         </p>
-                                                //     </div>
-                                                // </div>
-                                                <div className="space-y-4">
-                                                    {category.permissions.map((permission) => (
-                                                        <div key={permission.id} className="space-y-3">
-                                                            <div className="flex items-start space-x-4">
-                                                                <Checkbox
-                                                                    disabled={isSaving}
-                                                                    id={`check-${permission.id}`}
-                                                                    checked={formData.permissionIds.includes(permission.id)}
-                                                                    onCheckedChange={(checked) =>
-                                                                        handlePermissionChange(permission.id, !!checked)
-                                                                    }
-                                                                />
-                                                                <div className="space-y-1 leading-none">
-                                                                    <Label
-                                                                        htmlFor={`check-${permission.id}`}
-                                                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                                                    >
-                                                                        {permission.name}
-                                                                    </Label>
-                                                                    <p className="text-sm text-muted-foreground">
-                                                                        {permission.description}
-                                                                    </p>
-                                                                </div>
+                                   ) : (
+                                            <div className="space-y-4">
+                                                {category.permissions.map((permission) => (
+                                                    <div key={permission.id} className="space-y-3">
+                                                        <div className="flex items-start space-x-4">
+                                                            <Checkbox
+                                                                disabled={isSaving}
+                                                                id={`check-${permission.id}`}
+                                                                checked={formData.permissionIds.includes(permission.id)}
+                                                                onCheckedChange={(checked) =>
+                                                                    handlePermissionChange(permission.id, !!checked)
+                                                                }
+                                                            />
+                                                            <div className="space-y-1 leading-none">
+                                                                <Label
+                                                                    htmlFor={`check-${permission.id}`}
+                                                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                                                >
+                                                                    {permission.name}
+                                                                </Label>
+                                                                <p className="text-sm text-muted-foreground">
+                                                                    {permission.description}
+                                                                </p>
                                                             </div>
+                                                        </div>
 
-                                                            {/* NEW — per-status checklist, shown only under "Change Letter Status" once it's checked */}
-                                                            {permission.code === "letter.change_status" && formData.permissionIds.includes(permission.id) && (
-                                                                <div className="ml-8 border rounded-md p-3 space-y-2 bg-muted/30">
-                                                                    <p className="text-xs font-medium text-muted-foreground mb-1">
-                                                                        Allowed statuses this role can set a letter to:
-                                                                    </p>
-                                                                    {statuses.length === 0 ? (
-                                                                        <p className="text-sm text-muted-foreground">No statuses available</p>
-                                                                    ) : statuses.map(status => (
-                                                                        <div key={status.id} className="flex items-center space-x-2">
-                                                                            <Checkbox
-                                                                                disabled={isSaving}
-                                                                                id={`status-${status.id}`}
-                                                                                checked={selectedStatusIds.includes(status.id)}
-                                                                                onCheckedChange={() => toggleStatus(status.id)}
-                                                                            />
-                                                                            <label htmlFor={`status-${status.id}`} className="text-sm cursor-pointer">
-                                                                                {status.name}
-                                                                            </label>
+                                                        {/* per-status checklist, shown only under "Change Letter Status" once it's checked */}
+                                                        {permission.code === "letter.change_status" && formData.permissionIds.includes(permission.id) && (
+                                                            <div className="ml-8 border rounded-md p-3 space-y-2 bg-muted/30">
+                                                                <p className="text-xs font-medium text-muted-foreground mb-1">
+                                                                    Allowed statuses this role can set a letter to:
+                                                                </p>
+                                                                {statuses.length === 0 ? (
+                                                                    <p className="text-sm text-muted-foreground">No statuses available</p>
+                                                                ) : statuses.map(status => (
+                                                                    <div key={status.id} className="flex items-center space-x-2">
+                                                                        <Checkbox
+                                                                            disabled={isSaving}
+                                                                            id={`status-${status.id}`}
+                                                                            checked={selectedStatusIds.includes(status.id)}
+                                                                            onCheckedChange={() => toggleStatus(status.id)}
+                                                                        />
+                                                                        <label htmlFor={`status-${status.id}`} className="text-sm cursor-pointer">
+                                                                            {status.name}
+                                                                        </label>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                                                         </div>
                                                                     ))}
                                                                 </div>
-                                                            )}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                    ))}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </ScrollArea>
-                )}
+                                                            </ScrollArea>
+                                                        )}
 
                 <DialogFooter>
                     <Button variant="outline" onClick={onClose} disabled={isSaving}>
