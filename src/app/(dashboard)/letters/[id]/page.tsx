@@ -1290,7 +1290,7 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
 
                             {/* Save */}
                             {(hasPermission('letter.change_status') || hasPermission('letter.change_department') || hasPermission('letter.assign')) && (
-                                <Button className="w-full" onClick={handleSave} disabled={isSaving || !isDirty}>
+                                <Button className="w-full bg-green-600 hover:bg-green-700" onClick={handleSave} disabled={isSaving || !isDirty}>
                                     {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</> : <><Save className="mr-2 h-4 w-4"/>Save Changes</>}
                                 </Button>
                             )}
