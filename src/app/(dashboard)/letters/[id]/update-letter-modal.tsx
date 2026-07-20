@@ -1178,7 +1178,7 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                                     name="organization"
                                     render={({field}) => (
                                         <FormItem>
-                                            <FormLabel htmlFor={field.name}>Organization</FormLabel>
+                                            <FormLabel htmlFor={field.name}>Sender/Organization of the Letter</FormLabel>
                                             <div className="relative">
                                                 <Select
                                                     onValueChange={(value) => field.onChange(Number(value))}
@@ -1254,7 +1254,7 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                             name="subject"
                             render={({field}) => (
                                 <FormItem>
-                                    <FormLabel htmlFor={field.name}>Subject</FormLabel>
+                                    <FormLabel htmlFor={field.name}>Subject/Content of the Letter</FormLabel>
                                     <FormControl>
                                         <Input id={field.name} {...field} disabled={isSubmitting}/>
                                     </FormControl>
@@ -1323,7 +1323,7 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                             />
                         </div>
 
-                        <FormField
+                        {/* <FormField
                             control={control}
                             name="content"
                             render={({field}) => (
@@ -1336,7 +1336,7 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                                     <FormMessage/>
                                 </FormItem>
                             )}
-                        />
+                        /> */}
 
                         <FormField
                             control={control}
