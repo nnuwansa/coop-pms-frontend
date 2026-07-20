@@ -57,6 +57,7 @@ import {DesignationManagerDialog} from "@/app/(dashboard)/user/users/designation
 import {useDebounce} from "@/hook/debounce";
 import {EmployeeNameManagerDialog} from "@/app/(dashboard)/user/users/employee-name-manager-dialog";
 import api from "@/lib/api";
+import {AddDepartmentAccountModal} from "@/app/(dashboard)/user/users/add-department-account-modal";
 
 // Interfaces for API data
 interface Department {
@@ -173,6 +174,7 @@ export default function UsersPage() {
     const [totalUserCount, setTotalUserCount] = useState(0);
     const [employeeNames, setEmployeeNames] = useState<EmployeeName[]>([]);
 const [isNameModalOpen, setIsNameModalOpen] = useState(false);
+const [isDeptAccountModalOpen, setIsDeptAccountModalOpen] = useState(false);
 
     // State for user modal
     const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
@@ -515,7 +517,12 @@ const handleNamesChanged = () => {
                             <UserPlus className="mr-2 h-4 w-4"/>
                             New User
                         </Button>
+
                     </Link>
+                    <Button variant="outline" onClick={() => setIsDeptAccountModalOpen(true)}>
+    <Briefcase className="mr-2 h-4 w-4"/>
+    Add Department Account
+</Button>
                 </div>
             </div>
 
@@ -1091,6 +1098,12 @@ const handleNamesChanged = () => {
                 designations={designations}
                 onChanged={handleDesignationsChanged}
             />
+            <AddDepartmentAccountModal
+    isOpen={isDeptAccountModalOpen}
+    onClose={() => setIsDeptAccountModalOpen(false)}
+    departments={departments}
+    onSuccess={() => setRefreshTrigger(prev => !prev)}
+/>
 
             <EmployeeNameManagerDialog
                 isOpen={isNameModalOpen}

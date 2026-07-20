@@ -24,8 +24,8 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import api from "@/lib/api";
-import {useAuthStore} from "@/store/auth-store";
 import {formatDate, formatDateTime} from "@/lib/utils";
+import {useAuthStore} from "@/store/auth-store";
 import {UpdateLetterModal} from "@/app/(dashboard)/letters/[id]/update-letter-modal";
 import {InsertRemarkModal} from "@/app/(dashboard)/letters/[id]/insert-remark-modal";
 import {AttachmentPreview} from "@/app/(dashboard)/letters/[id]/attachment-preview";
@@ -54,10 +54,18 @@ interface LetterDetail {
     received_datetime: string;
     create_datetime: string;
     status: {id: number; name: string} | null;
+    status_days?: number | null;   // NEW
     status_id: number;
     departments: {id: number; name: string}[];
     assignees: {id: number; name: string}[];
     attachments: AttachmentItem[];
+    completion_file_name?: string | null;   // NEW
+    cheque_deposited?: boolean;
+    cheque_deposit_date?: string | null;
+    cheque_account_no?: string | null;
+    cheque_bank?: string | null;
+    cheque_branch?: string | null;
+
 }
 
 interface Remark {
@@ -310,7 +318,16 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
     const [isEditingAssignees, setIsEditingAssignees] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [previewAttachment, setPreviewAttachment] = useState<AttachmentItem | null>(null);
-    
+    const [completionFileName, setCompletionFileName] = useState("");
+    const selectedStatusName = allStatuses.find(s => s.id === selectedStatusId)?.name || "";
+const isCompletingNow = selectedStatusName.trim().toLowerCase() === "completed";
+const [chequeDeposited, setChequeDeposited] = useState(false);
+const [chequeDepositDate, setChequeDepositDate] = useState("");
+const [chequeAccountNo, setChequeAccountNo] = useState("");
+const [chequeBank, setChequeBank] = useState("");
+const [chequeBranch, setChequeBranch] = useState("");
+const [isSavingCheque, setIsSavingCheque] = useState(false);
+const [departmentAccounts, setDepartmentAccounts] = useState([]);
 
     // NEW — remark edit/delete audit log state
     const [remarkHistory, setRemarkHistory] = useState<RemarkHistoryEntry[]>([]);
@@ -369,11 +386,12 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
     const fetchLetter = useCallback(async () => {
         try {
             setIsLoading(true);
-            const [letterRes, deptRes, statusRes, assigneeRes] = await Promise.all([
+            const [letterRes, deptRes, statusRes, assigneeRes, deptAccountsRes] = await Promise.all([
                 api.get(`/v1/letter/${id}`),
                 api.get('/v1/department/list'),
                 api.get('/v1/status/list'),
                 api.get('/v1/system_user/names'),
+                 api.get('/v1/system_user/department-accounts'),  
             ]);
             const data: LetterDetail = letterRes.data.data;
             setLetter(data);
@@ -388,10 +406,16 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
             setOriginalDeptIds(deptIds);
             setOriginalAssigneeIds(assigneeIds);
             setOriginalStatusId(data.status_id);
+            setChequeDeposited(!!data.cheque_deposited);
+            setChequeDepositDate(data.cheque_deposit_date ? data.cheque_deposit_date.slice(0, 10) : "");
+            setChequeAccountNo(data.cheque_account_no || "");
+            setChequeBank(data.cheque_bank || "");
+            setChequeBranch(data.cheque_branch || "");
 
             if (deptRes.data.success) setAllDepartments(deptRes.data.data);
             if (statusRes.data.success) setAllStatuses(statusRes.data.data);
             if (assigneeRes.data.success) setAllAssignees(assigneeRes.data.data);
+            if (deptAccountsRes.data.success) setDepartmentAccounts(deptAccountsRes.data.data); 
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to load letter');
         } finally {
@@ -414,6 +438,25 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
             setRemarksLoading(false);
         }
     }, [id]);
+
+    const handleSaveCheque = async () => {
+    try {
+        setIsSavingCheque(true);
+        await api.put(`/v1/letter/${id}/cheque`, {
+            deposited: chequeDeposited,
+            deposit_date: chequeDeposited && chequeDepositDate ? new Date(chequeDepositDate).toISOString() : null,
+            account_no: chequeDeposited ? chequeAccountNo : null,
+            bank: chequeDeposited ? chequeBank : null,
+            branch: chequeDeposited ? chequeBranch : null,
+        });
+        toast.success("Cheque details saved");
+        fetchLetter();
+    } catch (error) {
+        toast.error(error.response?.data?.message || 'Failed to save cheque details');
+    } finally {
+        setIsSavingCheque(false);
+    }
+};
 
     // ── Fetch letter history ────────────────────────────────────────────────
 
@@ -484,27 +527,29 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
     // ── Save assignment ───────────────────────────────────────────────────────
 
     const handleSave = async () => {
-        try {
-            setIsSaving(true);
-            await api.put(`/v1/letter/assignment/${id}`, {
-                status_id: selectedStatusId,
-                department_ids: selectedDeptIds,
-                assignee_ids: selectedAssigneeIds,
-            });
-            toast.success("Letter updated successfully");
-
-            setOriginalStatusId(selectedStatusId);
-            setOriginalDeptIds(selectedDeptIds);
-            setOriginalAssigneeIds(selectedAssigneeIds);
-
-            fetchLetter();
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to save changes');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
+    if (isCompletingNow && !completionFileName.trim()) {
+        toast.error("File Name is required when marking a letter as Completed");
+        return;
+    }
+    try {
+        setIsSaving(true);
+        await api.put(`/v1/letter/assignment/${id}`, {
+            status_id: selectedStatusId,
+            department_ids: selectedDeptIds,
+            assignee_ids: selectedAssigneeIds,
+            file_name: isCompletingNow ? completionFileName.trim() : undefined,   // NEW
+        });
+        toast.success("Letter updated successfully");
+        setOriginalStatusId(selectedStatusId);
+        setOriginalDeptIds(selectedDeptIds);
+        setOriginalAssigneeIds(selectedAssigneeIds);
+        fetchLetter();
+    } catch (error) {
+        toast.error(error.response?.data?.message || 'Failed to save changes');
+    } finally {
+        setIsSaving(false);
+    }
+};
     // Used by "Save Changes and Go Back" in the unsaved-changes dialog.
     // Saves the pending assignment changes first, then runs the queued navigation.
     const handleSaveAndProceed = async () => {
@@ -514,6 +559,8 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
                 status_id: selectedStatusId,
                 department_ids: selectedDeptIds,
                 assignee_ids: selectedAssigneeIds,
+                file_name: isCompletingNow ? completionFileName.trim() : undefined,   // NEW
+       
             });
             toast.success("Letter updated successfully");
 
@@ -875,6 +922,72 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
                                         <p className="font-semibold mt-0.5">{letter.other}</p>
                                     </div>
                                 )}
+                                {letter.other && (
+                            <>
+                                <Separator className="my-5"/>
+                                <div className="space-y-3">
+                                    <div className="flex items-center space-x-2">
+                                        <Checkbox
+                                            id="cheque-deposited"
+                                            checked={chequeDeposited}
+                                            onCheckedChange={(checked) => setChequeDeposited(!!checked)}
+                                            disabled={!hasPermission('letter.update')}
+                                        />
+                                        <label htmlFor="cheque-deposited" className="text-sm font-medium cursor-pointer">
+                                            Cheque Deposited
+                                        </label>
+                                    </div>
+
+                                    {chequeDeposited && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-6">
+                                            <div>
+                                                <label className="text-xs text-muted-foreground">Deposit Date</label>
+                                                <input type="date" value={chequeDepositDate}
+                                                    onChange={(e) => setChequeDepositDate(e.target.value)}
+                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-muted-foreground">Account No</label>
+                                                <input type="text" value={chequeAccountNo}
+                                                    onChange={(e) => setChequeAccountNo(e.target.value)}
+                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-muted-foreground">Bank</label>
+                                                <input type="text" value={chequeBank}
+                                                    onChange={(e) => setChequeBank(e.target.value)}
+                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-muted-foreground">Branch</label>
+                                                <input type="text" value={chequeBranch}
+                                                    onChange={(e) => setChequeBranch(e.target.value)}
+                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {hasPermission('letter.update') && (
+                                                    <Button size="sm" onClick={handleSaveCheque} disabled={isSavingCheque}>
+                                                        {isSavingCheque ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</> : "Save Cheque Details"}
+                                                    </Button>
+                                                )}
+
+                                                {/* NEW — read-only summary of the currently saved cheque details */}
+                                                {letter.cheque_deposited && (
+                                                    <div className="border rounded-md p-3 space-y-1 bg-muted/20 mt-2">
+                                                        <p className="text-xs font-medium text-muted-foreground mb-1">Saved deposit details</p>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                                            <p><span className="text-muted-foreground">Deposit Date:</span> {letter.cheque_deposit_date ? formatDate(letter.cheque_deposit_date) : "—"}</p>
+                                                            <p><span className="text-muted-foreground">Account No:</span> {letter.cheque_account_no || "—"}</p>
+                                                            <p><span className="text-muted-foreground">Bank:</span> {letter.cheque_bank || "—"}</p>
+                                                            <p><span className="text-muted-foreground">Branch:</span> {letter.cheque_branch || "—"}</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                        </div>
+                                                    </>
+                                                )}
                             </div>
 
                             {/* Attachments — preview + download, no page navigation */}
@@ -1166,11 +1279,30 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
                 ))}
         </SelectContent>
     </Select>
-    {letter.status && (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusClassName(letter.status.name)}`}>
-            Current: {letter.status.name}
-        </span>
-    )}
+    {isCompletingNow && (
+    <div className="space-y-1 pt-1">
+        <label className="text-xs font-medium text-muted-foreground">
+            File Name <span className="text-destructive">*</span>
+        </label>
+        <input
+            type="text"
+            value={completionFileName}
+            onChange={(e) => setCompletionFileName(e.target.value)}
+            placeholder="Enter the file name for this completed letter"
+            className="w-full rounded-md border px-3 py-2 text-sm"
+        />
+    </div>
+)}
+                {letter.status && (
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusClassName(letter.status.name)}`}>
+                    Current: {letter.status.name}
+                </span>
+            )}
+            {typeof letter.status_days === 'number' && (
+                <p className="text-xs text-muted-foreground">
+                    {letter.status_days} day{letter.status_days !== 1 ? 's' : ''} in this status
+                </p>
+            )}
 </div>
 
                             <Separator/>
@@ -1194,10 +1326,10 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
                                 {selectedDeptIds.length > 0 ? (
                                     <div className="flex flex-wrap gap-1">
                                         {selectedDeptIds.map(deptId => {
-                                            const dept = allDepartments.find(d => d.id === deptId);
-                                            return dept ? (
+                                            const da = departmentAccounts.find(d => d.department_id === deptId);
+                                            return da ? (
                                                 <Badge key={deptId} variant="secondary" className="text-xs gap-1">
-                                                    {dept.name}
+                                                    {da.department_name}
                                                     {hasPermission('letter.change_department') && isEditingDepts && (
                                                         <button onClick={() => toggleDept(deptId)} className="ml-0.5 hover:text-destructive">
                                                             <X className="h-3 w-3"/>
@@ -1212,23 +1344,24 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
                                 )}
                                 {isEditingDepts && (
                                     <div className="border rounded-md p-3 grid grid-cols-1 gap-2 max-h-44 overflow-y-auto">
-                                        {allDepartments.length === 0 ? (
-                                            <p className="text-sm text-muted-foreground">No departments available</p>
-                                        ) : allDepartments.map(dept => (
-                                            <div key={dept.id} className="flex items-center space-x-2">
+                                        {departmentAccounts.length === 0 ? (
+                                            <p className="text-sm text-muted-foreground">No department accounts have been created yet</p>
+                                        ) : departmentAccounts.map(da => (
+                                            <div key={da.department_id} className="flex items-center space-x-2">
                                                 <Checkbox
-                                                    id={`dept-${dept.id}`}
-                                                    checked={selectedDeptIds.includes(dept.id)}
-                                                    onCheckedChange={() => toggleDept(dept.id)}
+                                                    id={`dept-${da.department_id}`}
+                                                    checked={selectedDeptIds.includes(da.department_id)}
+                                                    onCheckedChange={() => toggleDept(da.department_id)}
                                                     disabled={!hasPermission('letter.change_department')}
                                                 />
-                                                <label htmlFor={`dept-${dept.id}`} className="text-sm cursor-pointer leading-tight">
-                                                    {dept.name}
+                                                <label htmlFor={`dept-${da.department_id}`} className="text-sm cursor-pointer leading-tight">
+                                                    {da.department_name}
                                                 </label>
                                             </div>
-                                        ))} 
+                                        ))}
                                     </div>
                                 )}
+                                                                
                             </div>
                             <Separator/>
 

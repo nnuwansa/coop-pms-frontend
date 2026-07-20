@@ -108,6 +108,7 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
     const [isEditingAssignees, setIsEditingAssignees] = useState(false);
     const [sourcePopoverOpen, setSourcePopoverOpen] = useState(false);
 const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
+const [departmentAccounts, setDepartmentAccounts] = useState<{id: number; department_id: number; department_name: string; email: string}[]>([]);
 
     const form = useForm<RemarkFormValues>({
         resolver: zodResolver(remarkFormSchema),
@@ -152,14 +153,16 @@ const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
         if (isOpen && !isLoading) {
             const fetchData = async () => {
                 try {
-                    const [sourcesRes, deptRes, assigneeRes] = await Promise.all([
+                    const [sourcesRes, deptRes, assigneeRes, deptAccountsRes] = await Promise.all([
                         api.get('/v1/source/list'),
                         api.get('/v1/department/list'),
                         api.get('/v1/system_user/names'),
+                        api.get('/v1/system_user/department-accounts'), 
                     ]);
                     setSources(sourcesRes.data.data || []);
                     setDepartments(deptRes.data.data || []);
                     setAssignees(assigneeRes.data.data || []);
+                    setDepartmentAccounts(deptAccountsRes.data.data || []); 
                     await fetchLetterCode(new Date());
                     setIsLoading(true);
                 } catch (error) {
@@ -566,62 +569,65 @@ const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
 
                                     {/* Departments Multi-select */}
                                    
-                                        <FormField control={control} name="department_ids" render={() => (
-                                            <FormItem>
-                                                <div className="flex items-center justify-between">
-                                                    <FormLabel>Departments</FormLabel>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-7 px-2 text-xs"
-                                                        onClick={() => setIsEditingDepts(prev => !prev)}
-                                                        disabled={isSubmitting}
-                                                    >
-                                                        {isEditingDepts ? 'Done' : 'Edit'}
-                                                    </Button>
+                                       {/* Departments Multi-select */}
+                                    <FormField control={control} name="department_ids" render={() => (
+                                        <FormItem>
+                                            <div className="flex items-center justify-between">
+                                                <FormLabel>Departments</FormLabel>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 px-2 text-xs"
+                                                    onClick={() => setIsEditingDepts(prev => !prev)}
+                                                    disabled={isSubmitting}
+                                                >
+                                                    {isEditingDepts ? 'Done' : 'Edit'}
+                                                </Button>
+                                            </div>
+
+                                            {selectedDepartmentIds.length > 0 ? (
+                                                <div className="flex flex-wrap gap-1">
+                                                    {selectedDepartmentIds.map(deptId => {
+                                                        const da = departmentAccounts.find(d => d.department_id === deptId);
+                                                        return da ? (
+                                                            <Badge key={deptId} variant="secondary" className="text-xs gap-1">
+                                                                {da.department_name}
+                                                                {isEditingDepts && (
+                                                                    <button type="button" onClick={() => toggleDepartment(deptId)} className="ml-0.5 hover:text-destructive">
+                                                                        <X className="h-3 w-3"/>
+                                                                    </button>
+                                                                )}
+                                                            </Badge>
+                                                        ) : null;
+                                                    })}
                                                 </div>
+                                            ) : (
+                                                <p className="text-sm text-muted-foreground">No departments selected</p>
+                                            )}
 
-                                                {selectedDepartmentIds.length > 0 ? (
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {selectedDepartmentIds.map(deptId => {
-                                                            const dept = departments.find(d => d.id === deptId);
-                                                            return dept ? (
-                                                                <Badge key={deptId} variant="secondary" className="text-xs gap-1">
-                                                                    {dept.name}
-                                                                    {isEditingDepts && (
-                                                                        <button type="button" onClick={() => toggleDepartment(deptId)} className="ml-0.5 hover:text-destructive">
-                                                                            <X className="h-3 w-3"/>
-                                                                        </button>
-                                                                    )}
-                                                                </Badge>
-                                                            ) : null;
-                                                        })}
-                                                    </div>
-                                                ) : (
-                                                    <p className="text-sm text-muted-foreground">No departments selected</p>
-                                                )}
-
-                                                {isEditingDepts && (
-                                                    <div className="border rounded-md p-3 grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
-                                                        {departments.length === 0 ? (
-                                                            <p className="text-sm text-muted-foreground col-span-2">No departments available</p>
-                                                        ) : departments.map(dept => (
-                                                            <div key={dept.id} className="flex items-center space-x-2">
-                                                                <Checkbox
-                                                                    id={`dept-${dept.id}`}
-                                                                    checked={selectedDepartmentIds.includes(dept.id)}
-                                                                    onCheckedChange={() => toggleDepartment(dept.id)}
-                                                                    disabled={isSubmitting}
-                                                                />
-                                                                <label htmlFor={`dept-${dept.id}`} className="text-sm cursor-pointer">{dept.name}</label>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                                <FormMessage/>
-                                            </FormItem>
-                                        )}/>
+                                            {isEditingDepts && (
+                                                <div className="border rounded-md p-3 grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                                                    {departmentAccounts.length === 0 ? (
+                                                        <p className="text-sm text-muted-foreground col-span-2">No department accounts have been created yet</p>
+                                                    ) : departmentAccounts.map(da => (
+                                                        <div key={da.department_id} className="flex items-center space-x-2">
+                                                            <Checkbox
+                                                                id={`dept-${da.department_id}`}
+                                                                checked={selectedDepartmentIds.includes(da.department_id)}
+                                                                onCheckedChange={() => toggleDepartment(da.department_id)}
+                                                                disabled={isSubmitting}
+                                                            />
+                                                            <label htmlFor={`dept-${da.department_id}`} className="text-sm cursor-pointer">
+                                                                {da.department_name}
+                                                            </label>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            <FormMessage/>
+                                        </FormItem>
+                                    )}/>
 
                           {/* Assignees Multi-select */}
                                      

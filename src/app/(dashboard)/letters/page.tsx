@@ -70,6 +70,7 @@ interface Letter {
     assignee: string;
     create_datetime: string;
     status: string;
+    status_days?: number | null;   // NEW
     other?: string;
 }
 
@@ -784,6 +785,9 @@ export default function LetterDashboard() {
                                                         <TableCell className="text-center w-[150px]">
                                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusClassName(item.status)}`}>
                                                                 {item?.status || "No Status"}
+                                                                {typeof item.status_days === 'number' && (
+                                                                    <span className="ml-1 opacity-75">· {item.status_days}d</span>
+                                                                )}
                                                             </span>
                                                         </TableCell>
                                                     )}
