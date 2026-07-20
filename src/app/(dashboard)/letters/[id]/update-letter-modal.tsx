@@ -1240,7 +1240,7 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                             name="sender"
                             render={({field}) => (
                                 <FormItem>
-                                    <FormLabel htmlFor={field.name}>Sender</FormLabel>
+                                    <FormLabel htmlFor={field.name}>Sender's Address</FormLabel>
                                     <FormControl>
                                         <Input id={field.name} {...field} disabled={isSubmitting}/>
                                     </FormControl>
@@ -1249,19 +1249,7 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                             )}
                         />
 
-                        <FormField
-                            control={control}
-                            name="subject"
-                            render={({field}) => (
-                                <FormItem>
-                                    <FormLabel htmlFor={field.name}>Subject/Content of the Letter</FormLabel>
-                                    <FormControl>
-                                        <Input id={field.name} {...field} disabled={isSubmitting}/>
-                                    </FormControl>
-                                    <FormMessage/>
-                                </FormItem>
-                            )}
-                        />
+                       
 
                         <FormField
                             control={control}
@@ -1290,8 +1278,36 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                                 </FormItem>
                             )}
                         />
+                         <FormField
+                                control={control}
+                                name="sender_subject_no"
+                                render={({field}) => (
+                                    <FormItem>
+                                        <FormLabel htmlFor={field.name}>Sender's Subject No</FormLabel>
+                                        <FormControl>
+                                            <Input id={field.name} {...field} disabled={isSubmitting}
+                                                placeholder="Enter sender's subject number"/>
+                                        </FormControl>
+                                        <FormMessage/>
+                                    </FormItem>
+                                )}
+                            />
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <FormField
+                            control={control}
+                            name="subject"
+                            render={({field}) => (
+                                <FormItem>
+                                    <FormLabel htmlFor={field.name}>Subject/Content of the Letter</FormLabel>
+                                    <FormControl>
+                                        <Input id={field.name} {...field} disabled={isSubmitting}/>
+                                    </FormControl>
+                                    <FormMessage/>
+                                </FormItem>
+                            )}
+                        />
+                            
                             <FormField
                                 control={control}
                                 name="other"
@@ -1306,21 +1322,8 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                                 )}
                             />
 
-                            {/* NEW */}
-                            <FormField
-                                control={control}
-                                name="sender_subject_no"
-                                render={({field}) => (
-                                    <FormItem>
-                                        <FormLabel htmlFor={field.name}>Sender's Subject No</FormLabel>
-                                        <FormControl>
-                                            <Input id={field.name} {...field} disabled={isSubmitting}
-                                                placeholder="Enter sender's subject number"/>
-                                        </FormControl>
-                                        <FormMessage/>
-                                    </FormItem>
-                                )}
-                            />
+                           
+                            
                         </div>
 
                         {/* <FormField
