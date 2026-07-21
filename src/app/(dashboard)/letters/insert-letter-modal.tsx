@@ -1238,9 +1238,12 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
                 </Button>
             </DialogTrigger>
             <DialogContent
-                className="sm:max-w-[830px] max-h-[90vh] overflow-y-auto"
-                style={{transform: `translate(calc(-50% + ${dragOffset.x}px), calc(-50% + ${dragOffset.y}px))`}}
-            >
+    className="sm:max-w-[830px] max-h-[90vh] overflow-y-auto"
+    style={{
+        marginLeft: dragOffset.x,
+        marginTop: dragOffset.y,
+    }}
+>
                 {/* Drag handle -- grab the header to move the dialog out of the way */}
                 <div
                     onMouseDown={handleDragStart}
