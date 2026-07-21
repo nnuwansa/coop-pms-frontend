@@ -418,6 +418,7 @@ export default function OrganizationPage() {
                 onSuccess={() => {
                     refreshOrganizations();
                 }}
+                 existingOrganizations={allOrganizations}  // NEW
             />
 
             {/* Delete Confirmation Dialog */}

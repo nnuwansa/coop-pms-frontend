@@ -1127,9 +1127,7 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
     const handleAddOrganization = async () => {
     if (!newOrgName.trim()) return;
 
-    // NEW: check for an existing organization with the same name (case-insensitive)
-    // before hitting the API, so we can tell the user clearly and just select
-    // the existing one instead of trying (and failing) to create a duplicate.
+    // NEW: block duplicate organization names (case-insensitive)
     const existing = organizations.find(
         o => o.name.trim().toLowerCase() === newOrgName.trim().toLowerCase()
     );
@@ -1139,7 +1137,6 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
         if (existing.address) setValue('sender', existing.address);
         if (existing.email) setValue('email', existing.email);
         if (existing.telephone) setValue('telephone', existing.telephone);
-        setSelectedSenderLabel(existing.name);
         setNewOrgName("");
         setNewOrgAddress("");
         setNewOrgEmail("");
@@ -1163,7 +1160,6 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
         if (newOrg.address) setValue('sender', newOrg.address);
         if (newOrg.email) setValue('email', newOrg.email);
         if (newOrg.telephone) setValue('telephone', newOrg.telephone);
-        setSelectedSenderLabel(newOrg.name); // NEW
         setNewOrgName("");
         setNewOrgAddress("");
         setNewOrgEmail("");
@@ -1173,10 +1169,9 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
         setOrgSearch("");
         toast.success("Organization added successfully");
     } catch (error) {
-        toast.error(error.response?.data.message || 'Failed to add organization');
+        toast.error(error.response?.data?.message || 'Failed to add organization');
     }
 };
-
     const toggleDepartment = (id: number) => {
         const current = selectedDepartmentIds;
         const updated = current.includes(id) ? current.filter(d => d !== id) : [...current, id];
@@ -1433,7 +1428,7 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                                                     {!isAddingOrg && (
                                                                         <>
                                                                             <CommandInput placeholder="Search organization or person..." value={orgSearch} onValueChange={setOrgSearch}/>
-                                                                            <CommandList>
+                                                                            <CommandList className="max-h-[280px] overflow-y-auto">
                                                                                 <CommandEmpty>No organization or person found.</CommandEmpty>
 
                                                                                 {field.value && (

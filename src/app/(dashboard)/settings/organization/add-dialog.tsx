@@ -153,9 +153,10 @@ interface AddDialogProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess?: () => void;
+    existingOrganizations?: { id: string; name: string }[]; // NEW
 }
 
-export function AddDialog({isOpen, onClose, onSuccess}: AddDialogProps) {
+export function AddDialog({isOpen, onClose, onSuccess, existingOrganizations = []}: AddDialogProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const form = useForm<FormValues>({
@@ -164,6 +165,18 @@ export function AddDialog({isOpen, onClose, onSuccess}: AddDialogProps) {
     });
 
     const handleSubmit = async (values: FormValues) => {
+        // NEW: block duplicate organization names (case-insensitive) before hitting the API
+        const duplicate = existingOrganizations.find(
+            o => o.name.trim().toLowerCase() === values.name.trim().toLowerCase()
+        );
+        if (duplicate) {
+            form.setError("name", {
+                type: "manual",
+                message: `An organization named "${duplicate.name}" already exists`,
+            });
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             const response = await api.post('/v1/organization/', {
@@ -183,6 +196,7 @@ export function AddDialog({isOpen, onClose, onSuccess}: AddDialogProps) {
         }
     };
 
+    
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent>
