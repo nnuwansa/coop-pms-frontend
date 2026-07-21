@@ -419,124 +419,164 @@ const [departmentAccounts, setDepartmentAccounts] = useState<{id: number; depart
                                         </div>
 
                                         {/* Sender/Organization of the Letter */}
+                                                                     
                                         <div className="w-full lg:w-1/2">
-                                            <FormField control={control} name="organization" render={({field}) => (
-                                                <FormItem className="w-full">
-                                                    <FormLabel>Sender/Organization of the Letter</FormLabel>
-                                                   <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
-                                                    <PopoverTrigger asChild>
-                                                        <FormControl>
-                                                            <Button variant="outline" role="combobox" disabled={isSubmitting}
-                                                                className={cn("w-full justify-between font-normal", !field.value && "text-muted-foreground")}>
-                                                                <span className="truncate text-start">
-                                                                    {field.value ? organizations.find(o => o.id === field.value)?.name : "Select organization"}
-                                                                </span>
-                                                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
-                                                            </Button>
-                                                        </FormControl>
-                                                    </PopoverTrigger>
-                                                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                                                        <Command filter={() => 1}>
-                                                            <CommandInput placeholder="Search organization..." value={orgSearch} onValueChange={setOrgSearch}/>
-                                                            <CommandList>
-                                                                <CommandEmpty>No organization found.</CommandEmpty>
-                                                                <CommandGroup>
-                                                                    {field.value && (
-                                                                        <CommandItem onSelect={() => {
-                                                                            field.onChange(undefined);
-                                                                            setValue('sender', '');
-                                                                            setValue('email', '');
-                                                                            setValue('telephone', '');
-                                                                            setOrgPopoverOpen(false); {/* NEW */}
-                                                                        }} className="text-muted-foreground">
-                                                                            Clear selection
-                                                                        </CommandItem>
-                                                                    )}
-                                                                    {organizations.filter(o => !orgSearch || o.name.toLowerCase().includes(orgSearch.toLowerCase())).map(org => (
-                                                                        <CommandItem key={org.id} value={org.id.toString()}
-                                                                            onSelect={() => {
-                                                                                field.onChange(org.id);
-                                                                                const o = organizations.find(x => x.id === org.id);
-                                                                                if (o?.email) setValue('email', o.email);
-                                                                                if (o?.telephone) setValue('telephone', o.telephone);
-                                                                                if (o?.address) setValue('sender', o.address);
-                                                                                setOrgPopoverOpen(false); {/* NEW */}
-                                                                                setOrgSearch(""); {/* NEW */}
-                                                                            }}>
-                                                                            <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
-                                                                            {org.name}
-                                                                        </CommandItem>
-                                                                    ))}
-                                                                </CommandGroup>
-                                                            </CommandList>
-                                                            {/* the "Add new organization" footer div stays exactly as it was */}
-                                                             <div className="border-t p-2">
-                                                                    {isAddingOrg ? (
-                                                                    <div className="flex flex-col gap-2 p-1">
-                                                                        <Input
-                                                                            placeholder="Organization name..."
-                                                                            value={newOrgName}
-                                                                            onChange={(e) => setNewOrgName(e.target.value)}
-                                                                            className="h-8 text-sm"
-                                                                            autoFocus
-                                                                        />
-                                                                        <Input
-                                                                            placeholder="Address "
-                                                                            value={newOrgAddress}
-                                                                            onChange={(e) => setNewOrgAddress(e.target.value)}
-                                                                            className="h-8 text-sm"
-                                                                        />
-                                                                        <Input
-                                                                            placeholder="Email "
-                                                                            value={newOrgEmail}
-                                                                            onChange={(e) => setNewOrgEmail(e.target.value)}
-                                                                            className="h-8 text-sm"
-                                                                        />
-                                                                        <Input
-                                                                            placeholder="Telephone "
-                                                                            value={newOrgTelephone}
-                                                                            onChange={(e) => setNewOrgTelephone(e.target.value)}
-                                                                            className="h-8 text-sm"
-                                                                            onKeyDown={(e) => {
-                                                                                if (e.key === 'Enter') { e.preventDefault(); handleAddOrganization(); }
-                                                                                if (e.key === 'Escape') {
-                                                                                    setIsAddingOrg(false);
-                                                                                    setNewOrgName("");
-                                                                                    setNewOrgAddress("");
-                                                                                    setNewOrgEmail("");
-                                                                                    setNewOrgTelephone("");
-                                                                                }
-                                                                            }}
-                                                                        />
-                                                                        <div className="flex gap-2 justify-end mt-1">
-                                                                            <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => {
-                                                                                setIsAddingOrg(false);
-                                                                                setNewOrgName("");
-                                                                                setNewOrgAddress("");
-                                                                                setNewOrgEmail("");
-                                                                                setNewOrgTelephone("");
-                                                                            }}>
-                                                                                <X className="h-4 w-4"/>
-                                                                            </Button>
-                                                                            <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization} disabled={!newOrgName.trim()}>
-                                                                                Add
-                                                                            </Button>
-                                                                        </div>
-                                                                    </div>
-                                                                ) : (
-                                                                    <Button type="button" variant="ghost" className="w-full h-8 text-sm justify-start text-muted-foreground hover:text-foreground"
-                                                                        onClick={() => setIsAddingOrg(true)}>
-                                                                        <Plus className="mr-2 h-4 w-4"/>Add new organization
+                                            <FormField control={control} name="organization" render={({field}) => {
+                                                // A "sender" can be either an Organization (sets `organization` id)
+                                                // or a System User (there's no user-link column on the letter, so
+                                                // picking a user just fills the free-text `sender` field with
+                                                // their name and clears any selected organization id).
+                                                const search = orgSearch.toLowerCase();
+                                                const filteredOrgs = organizations.filter(o => !search || o.name.toLowerCase().includes(search));
+                                                const filteredUsers = assignees.filter(a => !search || a.name.toLowerCase().includes(search));
+                                                const selectedOrgName = field.value ? organizations.find(o => o.id === field.value)?.name : null;
+
+                                                return (
+                                                    <FormItem className="w-full">
+                                                        <FormLabel>Sender/Organization of the Letter</FormLabel>
+                                                        <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
+                                                            <PopoverTrigger asChild>
+                                                                <FormControl>
+                                                                    <Button variant="outline" role="combobox" disabled={isSubmitting}
+                                                                        className={cn("w-full justify-between font-normal", !selectedOrgName && "text-muted-foreground")}>
+                                                                        <span className="truncate text-start">
+                                                                            {selectedOrgName || "Select organization or user"}
+                                                                        </span>
+                                                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
                                                                     </Button>
-                                                                )}
-                                                            </div>
-                                                        </Command>
-                                                    </PopoverContent>
-                                                </Popover>
-                                                    <FormMessage/>
-                                                </FormItem>
-                                            )}/>
+                                                                </FormControl>
+                                                            </PopoverTrigger>
+                                                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                                                <Command filter={() => 1}>
+                                                                    <CommandInput placeholder="Search organization or user..." value={orgSearch} onValueChange={setOrgSearch}/>
+                                                                    <CommandList>
+                                                                        <CommandEmpty>No organization or user found.</CommandEmpty>
+
+                                                                        {field.value && (
+                                                                            <CommandGroup>
+                                                                                <CommandItem onSelect={() => {
+                                                                                    field.onChange(undefined);
+                                                                                    setValue('sender', '');
+                                                                                    setValue('email', '');
+                                                                                    setValue('telephone', '');
+                                                                                    setOrgPopoverOpen(false);
+                                                                                }} className="text-muted-foreground">
+                                                                                    Clear selection
+                                                                                </CommandItem>
+                                                                            </CommandGroup>
+                                                                        )}
+
+                                                                        {filteredOrgs.length > 0 && (
+                                                                            <CommandGroup heading="Organizations">
+                                                                                {filteredOrgs.map(org => (
+                                                                                    <CommandItem key={`org-${org.id}`} value={`org-${org.id}`}
+                                                                                        onSelect={() => {
+                                                                                            field.onChange(org.id);
+                                                                                            const o = organizations.find(x => x.id === org.id);
+                                                                                            if (o?.email) setValue('email', o.email);
+                                                                                            if (o?.telephone) setValue('telephone', o.telephone);
+                                                                                            if (o?.address) setValue('sender', o.address);
+                                                                                            setOrgPopoverOpen(false);
+                                                                                            setOrgSearch("");
+                                                                                        }}>
+                                                                                        <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
+                                                                                        {org.name}
+                                                                                    </CommandItem>
+                                                                                ))}
+                                                                            </CommandGroup>
+                                                                        )}
+
+                                                                        {filteredUsers.length > 0 && (
+                                                                            <CommandGroup heading="System Users">
+                                                                                {filteredUsers.map(user => (
+                                                                                    <CommandItem key={`user-${user.id}`} value={`user-${user.id}`}
+                                                                                        onSelect={() => {
+                                                                                            // Users aren't linked by id on the letter -- just fill
+                                                                                            // the sender text field with their name.
+                                                                                            field.onChange(undefined);
+                                                                                            setValue('sender', user.name);
+                                                                                            setOrgPopoverOpen(false);
+                                                                                            setOrgSearch("");
+                                                                                        }}>
+                                                                                        <Check className="mr-2 h-4 w-4 opacity-0"/>
+                                                                                        {user.name}
+                                                                                    </CommandItem>
+                                                                                ))}
+                                                                            </CommandGroup>
+                                                                        )}
+                                                                    </CommandList>
+
+                                                                    {/* the "Add new organization" footer stays exactly as it was */}
+                                                                    <div className="border-t p-2">
+                                                                        {isAddingOrg ? (
+                                                                            <div className="flex flex-col gap-2 p-1">
+                                                                                <Input
+                                                                                    placeholder="Organization name..."
+                                                                                    value={newOrgName}
+                                                                                    onChange={(e) => setNewOrgName(e.target.value)}
+                                                                                    className="h-8 text-sm"
+                                                                                    autoFocus
+                                                                                />
+                                                                                <Input
+                                                                                    placeholder="Address "
+                                                                                    value={newOrgAddress}
+                                                                                    onChange={(e) => setNewOrgAddress(e.target.value)}
+                                                                                    className="h-8 text-sm"
+                                                                                />
+                                                                                <Input
+                                                                                    placeholder="Email "
+                                                                                    value={newOrgEmail}
+                                                                                    onChange={(e) => setNewOrgEmail(e.target.value)}
+                                                                                    className="h-8 text-sm"
+                                                                                />
+                                                                                <Input
+                                                                                    placeholder="Telephone "
+                                                                                    value={newOrgTelephone}
+                                                                                    onChange={(e) => setNewOrgTelephone(e.target.value)}
+                                                                                    className="h-8 text-sm"
+                                                                                    onKeyDown={(e) => {
+                                                                                        if (e.key === 'Enter') { e.preventDefault(); handleAddOrganization(); }
+                                                                                        if (e.key === 'Escape') {
+                                                                                            setIsAddingOrg(false);
+                                                                                            setNewOrgName("");
+                                                                                            setNewOrgAddress("");
+                                                                                            setNewOrgEmail("");
+                                                                                            setNewOrgTelephone("");
+                                                                                        }
+                                                                                    }}
+                                                                                />
+                                                                                <div className="flex gap-2 justify-end mt-1">
+                                                                                    <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => {
+                                                                                        setIsAddingOrg(false);
+                                                                                        setNewOrgName("");
+                                                                                        setNewOrgAddress("");
+                                                                                        setNewOrgEmail("");
+                                                                                        setNewOrgTelephone("");
+                                                                                    }}>
+                                                                                        <X className="h-4 w-4"/>
+                                                                                    </Button>
+                                                                                    <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization} disabled={!newOrgName.trim()}>
+                                                                                        Add
+                                                                                    </Button>
+                                                                                </div>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <Button type="button" variant="ghost" className="w-full h-8 text-sm justify-start text-muted-foreground hover:text-foreground"
+                                                                                onClick={() => setIsAddingOrg(true)}>
+                                                                                <Plus className="mr-2 h-4 w-4"/>Add new organization
+                                                                            </Button>
+                                                                        )}
+                                                                    </div>
+                                                                </Command>
+                                                            </PopoverContent>
+                                                        </Popover>
+                                                        <FormMessage/>
+                                                    </FormItem>
+                                                );
+                                            }}/>
                                         </div>
+
+
                                     </div>
 
                                     {/* NEW: Registered Postal Number — shown only when Source = "Registered Post" */}
