@@ -1077,7 +1077,7 @@ export function Sidebar({isOpen}: SidebarProps) {
             animate={isOpen ? "open" : "closed"}
             variants={sidebarVariants}
             className={cn(
-                'fixed inset-y-0 left-0 z-40 transform border-r border-neutral-800 bg-gradient-to-b from-black via-neutral-900 to-neutral-800 shadow-sm lg:translate-x-0 top-16',
+                'fixed inset-y-0 left-0 z-40 transform border-r border-neutral-800 bg-gradient-to-b from-black via-neutral-900 to-neutral-700 shadow-sm lg:translate-x-0 top-16',
                 {
                     'translate-x-0': isOpen,
                     '-translate-x-full lg:translate-x-0': !isOpen,
