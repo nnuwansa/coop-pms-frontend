@@ -109,6 +109,7 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
     const [sourcePopoverOpen, setSourcePopoverOpen] = useState(false);
 const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
 const [departmentAccounts, setDepartmentAccounts] = useState<{id: number; department_id: number; department_name: string; email: string}[]>([]);
+const [datePopoverOpen, setDatePopoverOpen] = useState(false);
 
     const form = useForm<RemarkFormValues>({
         resolver: zodResolver(remarkFormSchema),
@@ -187,35 +188,37 @@ const [departmentAccounts, setDepartmentAccounts] = useState<{id: number; depart
             setNewOrgTelephone("");
             setIsEditingDepts(false);     
         setIsEditingAssignees(false);  
+        setDatePopoverOpen(false); 
         }
     };
 
     const handleAddOrganization = async () => {
-        if (!newOrgName.trim()) return;
-        try {
-            const res = await api.post('/v1/organization/', {
-                name: newOrgName.trim(),
-                address: newOrgAddress.trim() || null,
-                email: newOrgEmail.trim() || null,
-                telephone: newOrgTelephone.trim() || null,
-            });
-            const newOrg = res.data.data;
-            onOrganizationAdded?.(newOrg);
-            setValue('organization', newOrg.id);
-            // auto-fill the main form's sender fields too, same as selecting an existing org
-            if (newOrg.address) setValue('sender', newOrg.address);
-            if (newOrg.email) setValue('email', newOrg.email);
-            if (newOrg.telephone) setValue('telephone', newOrg.telephone);
-            setNewOrgName("");
-            setNewOrgAddress("");
-            setNewOrgEmail("");
-            setNewOrgTelephone("");
-            setIsAddingOrg(false);
-            toast.success("Organization added successfully");
-        } catch (error) {
-            toast.error(error.response?.data.message || 'Failed to add organization');
-        }
-    };
+    if (!newOrgName.trim()) return;
+    try {
+        const res = await api.post('/v1/organization/', {
+            name: newOrgName.trim(),
+            address: newOrgAddress.trim() || null,
+            email: newOrgEmail.trim() || null,
+            telephone: newOrgTelephone.trim() || null,
+        });
+        const newOrg = res.data.data;
+        onOrganizationAdded?.(newOrg);
+        setValue('organization', newOrg.id);
+        if (newOrg.address) setValue('sender', newOrg.address);
+        if (newOrg.email) setValue('email', newOrg.email);
+        if (newOrg.telephone) setValue('telephone', newOrg.telephone);
+        setNewOrgName("");
+        setNewOrgAddress("");
+        setNewOrgEmail("");
+        setNewOrgTelephone("");
+        setIsAddingOrg(false);
+        setOrgPopoverOpen(false);   
+        setOrgSearch("");         
+        toast.success("Organization added successfully");
+    } catch (error) {
+        toast.error(error.response?.data.message || 'Failed to add organization');
+    }
+};
 
     const toggleDepartment = (id: number) => {
         const current = selectedDepartmentIds;
@@ -322,7 +325,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState<{id: number; depart
                                     <FormField control={control} name="receivedDate" render={({field}) => (
                                         <FormItem className="flex flex-col">
                                             <FormLabel>Received Date</FormLabel>
-                                            <Popover>
+                                            <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
                                                 <PopoverTrigger asChild>
                                                     <FormControl>
                                                         <Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")} disabled={isSubmitting}>
@@ -336,6 +339,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState<{id: number; depart
                                                         onSelect={(date) => {
                                                             field.onChange(date);
                                                             if (date) fetchLetterCode(date).catch(console.error);
+                                                            setDatePopoverOpen(false); {/* NEW — closes immediately on select */}
                                                         }}
                                                         disabled={(date) => date > new Date() || date < new Date("1900-01-01")}
                                                         initialFocus/>
@@ -440,7 +444,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState<{id: number; depart
                                                                     <Button variant="outline" role="combobox" disabled={isSubmitting}
                                                                         className={cn("w-full justify-between font-normal", !selectedOrgName && "text-muted-foreground")}>
                                                                         <span className="truncate text-start">
-                                                                            {selectedOrgName || "Select organization or user"}
+                                                                            {selectedOrgName || "Select organization or person"}
                                                                         </span>
                                                                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
                                                                     </Button>
@@ -448,9 +452,9 @@ const [departmentAccounts, setDepartmentAccounts] = useState<{id: number; depart
                                                             </PopoverTrigger>
                                                             <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                                                                 <Command filter={() => 1}>
-                                                                    <CommandInput placeholder="Search organization or user..." value={orgSearch} onValueChange={setOrgSearch}/>
+                                                                    <CommandInput placeholder="Search organization or person..." value={orgSearch} onValueChange={setOrgSearch}/>
                                                                     <CommandList>
-                                                                        <CommandEmpty>No organization or user found.</CommandEmpty>
+                                                                        <CommandEmpty>No organization or person found.</CommandEmpty>
 
                                                                         {field.value && (
                                                                             <CommandGroup>
