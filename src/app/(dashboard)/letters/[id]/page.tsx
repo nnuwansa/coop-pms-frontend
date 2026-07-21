@@ -326,6 +326,7 @@ const [chequeDepositDate, setChequeDepositDate] = useState("");
 const [chequeAccountNo, setChequeAccountNo] = useState("");
 const [chequeBank, setChequeBank] = useState("");
 const [chequeBranch, setChequeBranch] = useState("");
+const [isEditingCheque, setIsEditingCheque] = useState(false);
 const [isSavingCheque, setIsSavingCheque] = useState(false);
 const [departmentAccounts, setDepartmentAccounts] = useState([]);
 
@@ -450,13 +451,14 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
             branch: chequeDeposited ? chequeBranch : null,
         });
         toast.success("Cheque details saved");
+        setIsEditingCheque(false);   // NEW — collapse back to read-only view after saving
         fetchLetter();
     } catch (error) {
         toast.error(error.response?.data?.message || 'Failed to save cheque details');
     } finally {
         setIsSavingCheque(false);
     }
-};
+    };
 
     // ── Fetch letter history ────────────────────────────────────────────────
 
@@ -922,73 +924,109 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                                         <p className="font-semibold mt-0.5">{letter.other}</p>
                                     </div>
                                 )}
-                                {letter.other && (
-                            <>
-                                <Separator className="my-5"/>
-                                <div className="space-y-3">
-                                    <div className="flex items-center space-x-2">
-                                        <Checkbox
-                                            id="cheque-deposited"
-                                            checked={chequeDeposited}
-                                            onCheckedChange={(checked) => setChequeDeposited(!!checked)}
-                                            disabled={!hasPermission('letter.update')}
-                                        />
-                                        <label htmlFor="cheque-deposited" className="text-sm font-medium cursor-pointer">
-                                            Cheque Deposited
-                                        </label>
-                                    </div>
-
-                                    {chequeDeposited && (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-6">
-                                            <div>
-                                                <label className="text-xs text-muted-foreground">Deposit Date</label>
-                                                <input type="date" value={chequeDepositDate}
-                                                    onChange={(e) => setChequeDepositDate(e.target.value)}
-                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
-                                            </div>
-                                            <div>
-                                                <label className="text-xs text-muted-foreground">Account No</label>
-                                                <input type="text" value={chequeAccountNo}
-                                                    onChange={(e) => setChequeAccountNo(e.target.value)}
-                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
-                                            </div>
-                                            <div>
-                                                <label className="text-xs text-muted-foreground">Bank</label>
-                                                <input type="text" value={chequeBank}
-                                                    onChange={(e) => setChequeBank(e.target.value)}
-                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
-                                            </div>
-                                            <div>
-                                                <label className="text-xs text-muted-foreground">Branch</label>
-                                                <input type="text" value={chequeBranch}
-                                                    onChange={(e) => setChequeBranch(e.target.value)}
-                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {hasPermission('letter.update') && (
-                                                    <Button size="sm" onClick={handleSaveCheque} disabled={isSavingCheque}>
-                                                        {isSavingCheque ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</> : "Save Cheque Details"}
-                                                    </Button>
-                                                )}
-
-                                                {/* NEW — read-only summary of the currently saved cheque details */}
-                                                {letter.cheque_deposited && (
-                                                    <div className="border rounded-md p-3 space-y-1 bg-muted/20 mt-2">
-                                                        <p className="text-xs font-medium text-muted-foreground mb-1">Saved deposit details</p>
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                                                            <p><span className="text-muted-foreground">Deposit Date:</span> {letter.cheque_deposit_date ? formatDate(letter.cheque_deposit_date) : "—"}</p>
-                                                            <p><span className="text-muted-foreground">Account No:</span> {letter.cheque_account_no || "—"}</p>
-                                                            <p><span className="text-muted-foreground">Bank:</span> {letter.cheque_bank || "—"}</p>
-                                                            <p><span className="text-muted-foreground">Branch:</span> {letter.cheque_branch || "—"}</p>
+                              {letter.other && (
+                                            <>
+                                                <Separator className="my-5"/>
+                                                <div className="space-y-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center space-x-2">
+                                                            <Checkbox
+                                                                id="cheque-deposited"
+                                                                checked={chequeDeposited}
+                                                                onCheckedChange={(checked) => setChequeDeposited(!!checked)}
+                                                                disabled={!hasPermission('letter.update') || !isEditingCheque}
+                                                            />
+                                                            <label htmlFor="cheque-deposited" className="text-sm font-medium cursor-pointer">
+                                                                Cheque Deposited
+                                                            </label>
                                                         </div>
+                                                        {hasPermission('letter.update') && letter.cheque_deposited && !isEditingCheque && (
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-7 px-2 text-xs"
+                                                                onClick={() => setIsEditingCheque(true)}
+                                                            >
+                                                                <Pencil className="mr-1 h-3 w-3"/>Edit
+                                                            </Button>
+                                                        )}
                                                     </div>
-                                                )}
+
+                                                    {/* Editable form — shown when not yet saved, or when Edit was clicked */}
+                                                    {(isEditingCheque || !letter.cheque_deposited) && chequeDeposited && (
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-6">
+                                                            <div>
+                                                                <label className="text-xs text-muted-foreground">Deposit Date</label>
+                                                                <input type="date" value={chequeDepositDate}
+                                                                    onChange={(e) => setChequeDepositDate(e.target.value)}
+                                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-xs text-muted-foreground">Account No</label>
+                                                                <input type="text" value={chequeAccountNo}
+                                                                    onChange={(e) => setChequeAccountNo(e.target.value)}
+                                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-xs text-muted-foreground">Bank</label>
+                                                                <input type="text" value={chequeBank}
+                                                                    onChange={(e) => setChequeBank(e.target.value)}
+                                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-xs text-muted-foreground">Branch</label>
+                                                                <input type="text" value={chequeBranch}
+                                                                    onChange={(e) => setChequeBranch(e.target.value)}
+                                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
+                                                            </div>
                                                         </div>
-                                                    </>
-                                                )}
-                            </div>
+                                                    )}
+
+                                                    {/* Save / Cancel — only while actively editing (first-time entry or Edit clicked) */}
+                                                    {hasPermission('letter.update') && (isEditingCheque || !letter.cheque_deposited) && (
+                                                        <div className="flex gap-2">
+                                                            <Button size="sm" onClick={handleSaveCheque} disabled={isSavingCheque}>
+                                                                {isSavingCheque ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</> : "Save Cheque Details"}
+                                                            </Button>
+                                                            {isEditingCheque && (
+                                                                <Button
+                                                                    type="button"
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    onClick={() => {
+                                                                        // revert unsaved edits back to the last saved values
+                                                                        setChequeDeposited(!!letter.cheque_deposited);
+                                                                        setChequeDepositDate(letter.cheque_deposit_date ? letter.cheque_deposit_date.slice(0, 10) : "");
+                                                                        setChequeAccountNo(letter.cheque_account_no || "");
+                                                                        setChequeBank(letter.cheque_bank || "");
+                                                                        setChequeBranch(letter.cheque_branch || "");
+                                                                        setIsEditingCheque(false);
+                                                                    }}
+                                                                >
+                                                                    Cancel
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Read-only summary — shown whenever saved data exists and we're not editing */}
+                                                    {letter.cheque_deposited && !isEditingCheque && (
+                                                        <div className="border rounded-md p-3 space-y-1 bg-muted/20">
+                                                            <p className="text-xs font-medium text-muted-foreground mb-1">Saved deposit details</p>
+                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                                                <p><span className="text-muted-foreground">Deposit Date:</span> {letter.cheque_deposit_date ? formatDate(letter.cheque_deposit_date) : "—"}</p>
+                                                                <p><span className="text-muted-foreground">Account No:</span> {letter.cheque_account_no || "—"}</p>
+                                                                <p><span className="text-muted-foreground">Bank:</span> {letter.cheque_bank || "—"}</p>
+                                                                <p><span className="text-muted-foreground">Branch:</span> {letter.cheque_branch || "—"}</p>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </>
+                                        )}
+
+                            </div>        
 
                             {/* Attachments — preview + download, no page navigation */}
                             {letter.attachments && letter.attachments.length > 0 && (
