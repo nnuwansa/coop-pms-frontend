@@ -1664,8 +1664,8 @@ export default function LetterDashboard() {
                                         <TableRow>
                                             {columnVisibility.id && <TableHead className="w-[50px] text-center">ID</TableHead>}
                                             {columnVisibility.code && <TableHead className="w-[150px]">Code</TableHead>}
+                                             {columnVisibility.organization && <TableHead className="w-[250px]">Sender/Organization of the letter</TableHead>}
                                             {columnVisibility.title && <TableHead className="w-[250px]">Subject/Content of the Letter</TableHead>}
-                                            {columnVisibility.organization && <TableHead className="w-[250px]">Sender/Organization of the letter</TableHead>}
                                             {columnVisibility.department && <TableHead className="w-[250px]">Department</TableHead>}
                                             {columnVisibility.assignee && <TableHead className="w-[150px]">Assignee</TableHead>}
                                             {columnVisibility.date && <TableHead className="w-[150px]">Received Date</TableHead>}
@@ -1704,14 +1704,15 @@ export default function LetterDashboard() {
                                                             <div className="truncate max-w-[150px]">{item.code}</div>
                                                         </TableCell>
                                                     )}
-                                                    {columnVisibility.title && (
-                                                        <TableCell className="w-[250px]">
-                                                            <div className="truncate max-w-[250px]">{item.subject}</div>
-                                                        </TableCell>
-                                                    )}
+                                                    
                                                     {columnVisibility.organization && (
                                                         <TableCell className="w-[250px]">
                                                             <div className="truncate max-w-[250px]">{item.organization || "—"}</div>
+                                                        </TableCell>
+                                                    )}
+                                                    {columnVisibility.title && (
+                                                        <TableCell className="w-[250px]">
+                                                            <div className="truncate max-w-[250px]">{item.subject}</div>
                                                         </TableCell>
                                                     )}
                                                     {columnVisibility.department && (
