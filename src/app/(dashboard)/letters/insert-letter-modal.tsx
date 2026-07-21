@@ -452,66 +452,68 @@ const [datePopoverOpen, setDatePopoverOpen] = useState(false);
                                                             </PopoverTrigger>
                                                             <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                                                                 <Command filter={() => 1}>
-                                                                    <CommandInput placeholder="Search organization or person..." value={orgSearch} onValueChange={setOrgSearch}/>
-                                                                    <CommandList>
-                                                                        <CommandEmpty>No organization or person found.</CommandEmpty>
+                                                                    {!isAddingOrg && (
+                                                                        <>
+                                                                            <CommandInput placeholder="Search organization or person..." value={orgSearch} onValueChange={setOrgSearch}/>
+                                                                            <CommandList>
+                                                                                <CommandEmpty>No organization or person found.</CommandEmpty>
 
-                                                                        {field.value && (
-                                                                            <CommandGroup>
-                                                                                <CommandItem onSelect={() => {
-                                                                                    field.onChange(undefined);
-                                                                                    setValue('sender', '');
-                                                                                    setValue('email', '');
-                                                                                    setValue('telephone', '');
-                                                                                    setOrgPopoverOpen(false);
-                                                                                }} className="text-muted-foreground">
-                                                                                    Clear selection
-                                                                                </CommandItem>
-                                                                            </CommandGroup>
-                                                                        )}
-
-                                                                        {filteredOrgs.length > 0 && (
-                                                                            <CommandGroup heading="Organizations">
-                                                                                {filteredOrgs.map(org => (
-                                                                                    <CommandItem key={`org-${org.id}`} value={`org-${org.id}`}
-                                                                                        onSelect={() => {
-                                                                                            field.onChange(org.id);
-                                                                                            const o = organizations.find(x => x.id === org.id);
-                                                                                            if (o?.email) setValue('email', o.email);
-                                                                                            if (o?.telephone) setValue('telephone', o.telephone);
-                                                                                            if (o?.address) setValue('sender', o.address);
-                                                                                            setOrgPopoverOpen(false);
-                                                                                            setOrgSearch("");
-                                                                                        }}>
-                                                                                        <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
-                                                                                        {org.name}
-                                                                                    </CommandItem>
-                                                                                ))}
-                                                                            </CommandGroup>
-                                                                        )}
-
-                                                                        {filteredUsers.length > 0 && (
-                                                                            <CommandGroup heading="System Users">
-                                                                                {filteredUsers.map(user => (
-                                                                                    <CommandItem key={`user-${user.id}`} value={`user-${user.id}`}
-                                                                                        onSelect={() => {
-                                                                                            // Users aren't linked by id on the letter -- just fill
-                                                                                            // the sender text field with their name.
+                                                                                {field.value && (
+                                                                                    <CommandGroup>
+                                                                                        <CommandItem onSelect={() => {
                                                                                             field.onChange(undefined);
-                                                                                            setValue('sender', user.name);
+                                                                                            setValue('sender', '');
+                                                                                            setValue('email', '');
+                                                                                            setValue('telephone', '');
                                                                                             setOrgPopoverOpen(false);
-                                                                                            setOrgSearch("");
-                                                                                        }}>
-                                                                                        <Check className="mr-2 h-4 w-4 opacity-0"/>
-                                                                                        {user.name}
-                                                                                    </CommandItem>
-                                                                                ))}
-                                                                            </CommandGroup>
-                                                                        )}
-                                                                    </CommandList>
+                                                                                        }} className="text-muted-foreground">
+                                                                                            Clear selection
+                                                                                        </CommandItem>
+                                                                                    </CommandGroup>
+                                                                                )}
 
-                                                                    {/* the "Add new organization" footer stays exactly as it was */}
-                                                                    <div className="border-t p-2">
+                                                                                {filteredOrgs.length > 0 && (
+                                                                                    <CommandGroup heading="Organizations">
+                                                                                        {filteredOrgs.map(org => (
+                                                                                            <CommandItem key={`org-${org.id}`} value={`org-${org.id}`}
+                                                                                                onSelect={() => {
+                                                                                                    field.onChange(org.id);
+                                                                                                    const o = organizations.find(x => x.id === org.id);
+                                                                                                    if (o?.email) setValue('email', o.email);
+                                                                                                    if (o?.telephone) setValue('telephone', o.telephone);
+                                                                                                    if (o?.address) setValue('sender', o.address);
+                                                                                                    setOrgPopoverOpen(false);
+                                                                                                    setOrgSearch("");
+                                                                                                }}>
+                                                                                                <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
+                                                                                                {org.name}
+                                                                                            </CommandItem>
+                                                                                        ))}
+                                                                                    </CommandGroup>
+                                                                                )}
+
+                                                                                {filteredUsers.length > 0 && (
+                                                                                    <CommandGroup heading="System Users">
+                                                                                        {filteredUsers.map(user => (
+                                                                                            <CommandItem key={`user-${user.id}`} value={`user-${user.id}`}
+                                                                                                onSelect={() => {
+                                                                                                    field.onChange(undefined);
+                                                                                                    setValue('sender', user.name);
+                                                                                                    setOrgPopoverOpen(false);
+                                                                                                    setOrgSearch("");
+                                                                                                }}>
+                                                                                                <Check className="mr-2 h-4 w-4 opacity-0"/>
+                                                                                                {user.name}
+                                                                                            </CommandItem>
+                                                                                        ))}
+                                                                                    </CommandGroup>
+                                                                                )}
+                                                                            </CommandList>
+                                                                        </>
+                                                                    )}
+
+                                                                    {/* the "Add new organization" footer */}
+                                                                    <div className={cn("p-2", !isAddingOrg && "border-t")}>
                                                                         {isAddingOrg ? (
                                                                             <div className="flex flex-col gap-2 p-1">
                                                                                 <Input
