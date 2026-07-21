@@ -1,3 +1,48 @@
+// 'use client';
+
+// import {
+//     AlertDialog,
+//     AlertDialogAction,
+//     AlertDialogCancel,
+//     AlertDialogContent,
+//     AlertDialogDescription,
+//     AlertDialogFooter,
+//     AlertDialogHeader,
+//     AlertDialogTitle,
+// } from "@/components/ui/alert-dialog";
+
+// interface DeleteAlertProps {
+//     isOpen: boolean;
+//     onClose: () => void;
+//     onConfirm: () => void;
+//     letterCode: string;
+// }
+
+// export function DeleteLetterAlert({isOpen, onClose, onConfirm, letterCode}: DeleteAlertProps) {
+//     return (
+//         <AlertDialog open={isOpen} onOpenChange={onClose}>
+//             <AlertDialogContent>
+//                 <AlertDialogHeader>
+//                     <AlertDialogTitle>Are you sure you want to delete this letter?</AlertDialogTitle>
+//                     <AlertDialogDescription>
+//                         This will permanently delete letter <span className="font-semibold">{letterCode}</span>.
+//                         This action cannot be undone.
+//                     </AlertDialogDescription>
+//                 </AlertDialogHeader>
+//                 <AlertDialogFooter>
+//                     <AlertDialogCancel>Cancel</AlertDialogCancel>
+//                     <AlertDialogAction
+//                         onClick={onConfirm}
+//                         className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+//                     >
+//                         Delete
+//                     </AlertDialogAction>
+//                 </AlertDialogFooter>
+//             </AlertDialogContent>
+//         </AlertDialog>
+//     );
+// }
+
 'use client';
 
 import {
@@ -16,11 +61,12 @@ interface DeleteAlertProps {
     onClose: () => void;
     onConfirm: () => void;
     letterCode: string;
+    isDeleting?: boolean;
 }
 
-export function DeleteLetterAlert({isOpen, onClose, onConfirm, letterCode}: DeleteAlertProps) {
+export function DeleteLetterAlert({isOpen, onClose, onConfirm, letterCode, isDeleting}: DeleteAlertProps) {
     return (
-        <AlertDialog open={isOpen} onOpenChange={onClose}>
+        <AlertDialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle>Are you sure you want to delete this letter?</AlertDialogTitle>
@@ -30,12 +76,16 @@ export function DeleteLetterAlert({isOpen, onClose, onConfirm, letterCode}: Dele
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
                     <AlertDialogAction
-                        onClick={onConfirm}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            onConfirm();
+                        }}
+                        disabled={isDeleting}
                         className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
                     >
-                        Delete
+                        {isDeleting ? "Deleting..." : "Delete"}
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
