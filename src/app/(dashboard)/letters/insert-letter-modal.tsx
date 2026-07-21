@@ -998,6 +998,7 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
     const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
     const [departmentAccounts, setDepartmentAccounts] = useState<{id: number; department_id: number; department_name: string; email: string}[]>([]);
     const [datePopoverOpen, setDatePopoverOpen] = useState(false);
+const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
 
     // --- Draggable dialog -----------------------------------------------
     // The dialog is centered by default (translate(-50%, -50%)). We add an
@@ -1118,12 +1119,37 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
             setIsEditingDepts(false);     
             setIsEditingAssignees(false);  
             setDatePopoverOpen(false);
-            setDragOffset({x: 0, y: 0}); // reset position for next time the dialog opens
+            setSelectedSenderLabel(""); 
+            setDragOffset({x: 0, y: 0}); 
         }
     };
 
     const handleAddOrganization = async () => {
     if (!newOrgName.trim()) return;
+
+    // NEW: check for an existing organization with the same name (case-insensitive)
+    // before hitting the API, so we can tell the user clearly and just select
+    // the existing one instead of trying (and failing) to create a duplicate.
+    const existing = organizations.find(
+        o => o.name.trim().toLowerCase() === newOrgName.trim().toLowerCase()
+    );
+    if (existing) {
+        toast.error(`"${existing.name}" already exists — selecting it instead`);
+        setValue('organization', existing.id);
+        if (existing.address) setValue('sender', existing.address);
+        if (existing.email) setValue('email', existing.email);
+        if (existing.telephone) setValue('telephone', existing.telephone);
+        setSelectedSenderLabel(existing.name);
+        setNewOrgName("");
+        setNewOrgAddress("");
+        setNewOrgEmail("");
+        setNewOrgTelephone("");
+        setIsAddingOrg(false);
+        setOrgPopoverOpen(false);
+        setOrgSearch("");
+        return;
+    }
+
     try {
         const res = await api.post('/v1/organization/', {
             name: newOrgName.trim(),
@@ -1137,13 +1163,14 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
         if (newOrg.address) setValue('sender', newOrg.address);
         if (newOrg.email) setValue('email', newOrg.email);
         if (newOrg.telephone) setValue('telephone', newOrg.telephone);
+        setSelectedSenderLabel(newOrg.name); // NEW
         setNewOrgName("");
         setNewOrgAddress("");
         setNewOrgEmail("");
         setNewOrgTelephone("");
         setIsAddingOrg(false);
-        setOrgPopoverOpen(false);   
-        setOrgSearch("");         
+        setOrgPopoverOpen(false);
+        setOrgSearch("");
         toast.success("Organization added successfully");
     } catch (error) {
         toast.error(error.response?.data.message || 'Failed to add organization');
@@ -1248,7 +1275,7 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
                 <div
                     onMouseDown={handleDragStart}
                     className="flex items-center justify-center -mt-2 -mx-6 mb-1 cursor-grab active:cursor-grabbing select-none"
-                    title="Drag to move this window"
+               title="Drag to move this window"
                 >
                     <GripHorizontal className="h-4 w-4 text-muted-foreground/50"/>
                 </div>
@@ -1382,6 +1409,8 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
                                                 const filteredOrgs = organizations.filter(o => !search || o.name.toLowerCase().includes(search));
                                                 const filteredUsers = assignees.filter(a => !search || a.name.toLowerCase().includes(search));
                                                 const selectedOrgName = field.value ? organizations.find(o => o.id === field.value)?.name : null;
+                                                // button label now falls back to the tracked label (covers the "person" case)
+                                                const displayLabel = selectedOrgName || selectedSenderLabel;
 
                                                 return (
                                                     <FormItem className="w-full">
@@ -1390,15 +1419,16 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
                                                             <PopoverTrigger asChild>
                                                                 <FormControl>
                                                                     <Button variant="outline" role="combobox" disabled={isSubmitting}
-                                                                        className={cn("w-full justify-between font-normal", !selectedOrgName && "text-muted-foreground")}>
-                                                                        <span className="truncate text-start">
-                                                                            {selectedOrgName || "Select organization or person"}
-                                                                        </span>
-                                                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
-                                                                    </Button>
+                                                                            className={cn("w-full justify-between font-normal", !displayLabel && "text-muted-foreground")}>
+                                                                            <span className="truncate text-start">
+                                                                                {displayLabel || "Select organization or person"}
+                                                                            </span>
+                                                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
+                                                                        </Button>
                                                                 </FormControl>
                                                             </PopoverTrigger>
-                                                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                                            <PopoverContent
+                                                                className={cn("p-0", isAddingOrg ? "w-[420px]" : "w-[--radix-popover-trigger-width]")} align="start">
                                                                 <Command filter={() => 1}>
                                                                     {!isAddingOrg && (
                                                                         <>
@@ -1425,14 +1455,15 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
                                                                                         {filteredOrgs.map(org => (
                                                                                             <CommandItem key={`org-${org.id}`} value={`org-${org.id}`}
                                                                                                 onSelect={() => {
-                                                                                                    field.onChange(org.id);
-                                                                                                    const o = organizations.find(x => x.id === org.id);
-                                                                                                    if (o?.email) setValue('email', o.email);
-                                                                                                    if (o?.telephone) setValue('telephone', o.telephone);
-                                                                                                    if (o?.address) setValue('sender', o.address);
-                                                                                                    setOrgPopoverOpen(false);
-                                                                                                    setOrgSearch("");
-                                                                                                }}>
+                                                                                                        field.onChange(org.id);
+                                                                                                        const o = organizations.find(x => x.id === org.id);
+                                                                                                        if (o?.email) setValue('email', o.email);
+                                                                                                        if (o?.telephone) setValue('telephone', o.telephone);
+                                                                                                        if (o?.address) setValue('sender', o.address);
+                                                                                                        setSelectedSenderLabel(org.name); // NEW
+                                                                                                        setOrgPopoverOpen(false);
+                                                                                                        setOrgSearch("");
+                                                                                                    }}>
                                                                                                 <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
                                                                                                 {org.name}
                                                                                             </CommandItem>
@@ -1447,6 +1478,7 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
                                                                                                 onSelect={() => {
                                                                                                     field.onChange(undefined);
                                                                                                     setValue('sender', user.name);
+                                                                                                    setSelectedSenderLabel(user.name); // NEW — this is what was missing
                                                                                                     setOrgPopoverOpen(false);
                                                                                                     setOrgSearch("");
                                                                                                 }}>
