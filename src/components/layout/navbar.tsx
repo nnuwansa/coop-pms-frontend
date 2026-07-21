@@ -25,7 +25,7 @@ export function Navbar({isOpen, onMenuClickAction}: NavbarProps) {
         .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1));
 
     return (
-        <header className="fixed left-0 right-0 top-0 z-30 h-16 border-b bg-white dark:bg-gray-800">
+        <header className="fixed left-0 right-0 top-0 z-30 h-16 border-b border-slate-200 bg-slate-50/95 backdrop-blur-sm shadow-sm dark:border-slate-800 dark:bg-slate-900/95">
             <div className="flex h-full items-center justify-between px-4">
                 <div className="flex items-center space-x-4">
                     <Button
