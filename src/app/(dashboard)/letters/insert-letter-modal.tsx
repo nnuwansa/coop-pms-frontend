@@ -470,8 +470,65 @@ const [departmentAccounts, setDepartmentAccounts] = useState<{id: number; depart
                                                                 </CommandGroup>
                                                             </CommandList>
                                                             {/* the "Add new organization" footer div stays exactly as it was */}
-                                                            <div className="border-t p-2">
-                                                                {/* ... unchanged ... */}
+                                                             <div className="border-t p-2">
+                                                                    {isAddingOrg ? (
+                                                                    <div className="flex flex-col gap-2 p-1">
+                                                                        <Input
+                                                                            placeholder="Organization name..."
+                                                                            value={newOrgName}
+                                                                            onChange={(e) => setNewOrgName(e.target.value)}
+                                                                            className="h-8 text-sm"
+                                                                            autoFocus
+                                                                        />
+                                                                        <Input
+                                                                            placeholder="Address "
+                                                                            value={newOrgAddress}
+                                                                            onChange={(e) => setNewOrgAddress(e.target.value)}
+                                                                            className="h-8 text-sm"
+                                                                        />
+                                                                        <Input
+                                                                            placeholder="Email "
+                                                                            value={newOrgEmail}
+                                                                            onChange={(e) => setNewOrgEmail(e.target.value)}
+                                                                            className="h-8 text-sm"
+                                                                        />
+                                                                        <Input
+                                                                            placeholder="Telephone "
+                                                                            value={newOrgTelephone}
+                                                                            onChange={(e) => setNewOrgTelephone(e.target.value)}
+                                                                            className="h-8 text-sm"
+                                                                            onKeyDown={(e) => {
+                                                                                if (e.key === 'Enter') { e.preventDefault(); handleAddOrganization(); }
+                                                                                if (e.key === 'Escape') {
+                                                                                    setIsAddingOrg(false);
+                                                                                    setNewOrgName("");
+                                                                                    setNewOrgAddress("");
+                                                                                    setNewOrgEmail("");
+                                                                                    setNewOrgTelephone("");
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                        <div className="flex gap-2 justify-end mt-1">
+                                                                            <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => {
+                                                                                setIsAddingOrg(false);
+                                                                                setNewOrgName("");
+                                                                                setNewOrgAddress("");
+                                                                                setNewOrgEmail("");
+                                                                                setNewOrgTelephone("");
+                                                                            }}>
+                                                                                <X className="h-4 w-4"/>
+                                                                            </Button>
+                                                                            <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization} disabled={!newOrgName.trim()}>
+                                                                                Add
+                                                                            </Button>
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <Button type="button" variant="ghost" className="w-full h-8 text-sm justify-start text-muted-foreground hover:text-foreground"
+                                                                        onClick={() => setIsAddingOrg(true)}>
+                                                                        <Plus className="mr-2 h-4 w-4"/>Add new organization
+                                                                    </Button>
+                                                                )}
                                                             </div>
                                                         </Command>
                                                     </PopoverContent>
