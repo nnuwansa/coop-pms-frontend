@@ -26,9 +26,9 @@ export function DeleteDialog({deleteAlert, setDeleteAlert, onSuccess}: DeleteDia
         >
             <AlertDialogContent>
                 <AlertDialogHeader>
-                    <AlertDialogTitle>Are you sure you want to delete this department?</AlertDialogTitle>
+                    <AlertDialogTitle>Are you sure you want to delete this section?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        This will permanently delete department <span
+                        This will permanently delete section <span
                         className="font-semibold">#{deleteAlert.Id}</span>.
                         This action cannot be undone.
                     </AlertDialogDescription>

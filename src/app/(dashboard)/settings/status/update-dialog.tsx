@@ -16,12 +16,14 @@ import {Input} from "@/components/ui/input";
 import {Button} from "@/components/ui/button";
 import {Loader2} from "lucide-react";
 import api from "@/lib/api";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // Define schema for form validation
 const formSchema = z.object({
     name: z.string()
         .min(1, "Status name is required")
         .max(40, "Status name must be less than 40 characters"),
+    requiresFileName: z.boolean().default(false),   // NEW
 });
 
 // Infer TypeScript type from the schema
@@ -70,6 +72,7 @@ export function UpdateDialog({
 
             const response = await api.put(`/v1/status/${initialData.id}`, {
                 name: values.name,
+                requires_file_name: values.requiresFileName,   // NEW
             });
             const result = await response.data;
 
@@ -112,6 +115,15 @@ export function UpdateDialog({
                                 </FormItem>
                             )}
                         />
+                       
+                        <FormField control={form.control} name="requiresFileName" render={({field}) => (
+                            <FormItem className="flex items-center space-x-2">
+                                <FormControl>
+                                    <Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isSubmitting}/>
+                                </FormControl>
+                                <FormLabel className="!mt-0 cursor-pointer">Require File Name when this status is selected</FormLabel>
+                            </FormItem>
+                        )}/>
 
                         <DialogFooter className="pt-4">
                             <Button

@@ -145,6 +145,7 @@ const formSchema = z.object({
     address: z.string().max(500).optional().or(z.literal("")),
     email: z.string().email("Invalid email").max(150).optional().or(z.literal("")),
     telephone: z.string().max(15).optional().or(z.literal("")),
+    faxNo: z.string().max(20).optional().or(z.literal("")),   // NEW
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -161,7 +162,7 @@ export function AddDialog({isOpen, onClose, onSuccess, existingOrganizations = [
 
     const form = useForm<FormValues>({
         resolver: zodResolver(formSchema),
-        defaultValues: {name: "", address: "", email: "", telephone: ""},
+        defaultValues: {name: "", address: "", email: "", telephone: "", faxNo: ""},
     });
 
     const handleSubmit = async (values: FormValues) => {
@@ -184,6 +185,7 @@ export function AddDialog({isOpen, onClose, onSuccess, existingOrganizations = [
                 address: values.address || null,
                 email: values.email || null,
                 telephone: values.telephone || null,
+                fax_no: values.faxNo || null,   // NEW
             });
             toast.success(response.data.message);
             form.reset();
@@ -238,6 +240,16 @@ export function AddDialog({isOpen, onClose, onSuccess, existingOrganizations = [
                                 <FormLabel>Telephone</FormLabel>
                                 <FormControl>
                                     <Input disabled={isSubmitting} placeholder="Enter telephone" {...field}/>
+                                </FormControl>
+                                <FormMessage/>
+                            </FormItem>
+                        )}/>
+                        // form field, after Telephone:
+                        <FormField control={form.control} name="faxNo" render={({field}) => (
+                            <FormItem>
+                                <FormLabel>Fax No</FormLabel>
+                                <FormControl>
+                                    <Input disabled={isSubmitting} placeholder="Enter fax number" {...field}/>
                                 </FormControl>
                                 <FormMessage/>
                             </FormItem>

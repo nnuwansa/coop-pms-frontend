@@ -21,8 +21,8 @@ import api from "@/lib/api";
 // Define schema for form validation
 const formSchema = z.object({
     name: z.string()
-        .min(1, "Department name is required")
-        .max(75, "Department name must be less than 75 characters"),
+        .min(1, "Section name is required")
+        .max(75, "Section    name must be less than 75 characters"),
 });
 
 // Infer TypeScript type from the schema
@@ -74,12 +74,12 @@ export function UpdateDialog({
             });
             const result = await response.data;
 
-            toast.success(result.message || "Department updated successfully");
+            toast.success(result.message || "Section updated successfully");
             onOpenChange(false);
             form.reset();
             onSuccess?.();
         } catch (error) {
-            console.error("Error updating department:", error);
+            console.error("Error updating section:", error);
             toast.error(error.response?.data.message || 'Something went wrong. Please try again');
         } finally {
             setIsSubmitting(false);
@@ -90,9 +90,9 @@ export function UpdateDialog({
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Update Department</DialogTitle>
+                    <DialogTitle>Update Section</DialogTitle>
                     <DialogDescription>
-                        Make changes to the department details
+                        Make changes to the section details
                     </DialogDescription>
                 </DialogHeader>
 
@@ -103,11 +103,11 @@ export function UpdateDialog({
                             name="name"
                             render={({field}) => (
                                 <FormItem>
-                                    <FormLabel>Department Name</FormLabel>
+                                    <FormLabel>Section Name</FormLabel>
                                     <FormControl>
                                         <Input
                                             disabled={isSubmitting}
-                                            placeholder="Enter department name" {...field} />
+                                            placeholder="Enter section name" {...field} />
                                     </FormControl>
                                     <FormMessage/>
                                 </FormItem>

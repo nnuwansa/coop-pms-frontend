@@ -18,12 +18,19 @@ import {
 } from "lucide-react";
 import {toast} from "sonner";
 import {ScrollArea} from "@/components/ui/scroll-area";
-import {DeleteDialog} from "@/app/(dashboard)/settings/department/delete-dialog";
-import {AddDialog} from "@/app/(dashboard)/settings/department/add-dialog";
-import {UpdateDialog} from "@/app/(dashboard)/settings/department/update-dialog";
+import {DeleteDialog} from "@/app/(dashboard)/settings/section/delete-dialog";
+import {AddDialog} from "@/app/(dashboard)/settings/section/add-dialog";
+import {UpdateDialog} from "@/app/(dashboard)/settings/section/update-dialog";
 import {Input} from "@/components/ui/input";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import api from "@/lib/api";
+import {ManageUnitsDialog} from "@/app/(dashboard)/settings/section/manage-units-dialog";
+import {Layers} from "lucide-react";
+
+interface Unit {
+    id: number;
+    name: string;
+}
 
 interface Department {
     id: string;
@@ -56,11 +63,15 @@ export default function DepartmentPage() {
     });
     const [isLoading, setIsLoading] = useState(true);
     const [refreshTrigger, setRefreshTrigger] = useState(false);
+    const [unitsDialogOpen, setUnitsDialogOpen] = useState(false);
+
+const [unitsDepartment, setUnitsDepartment] = useState<Department | null>(null);
+const [departmentUnits, setDepartmentUnits] = useState<Record<string, Unit[]>>({});
 
     useEffect(() => {
         fetchDepartments().catch(
             (error) => {
-                console.error("Error loading departments", {error});
+                console.error("Error loading sectionss", {error});
             }
         )
     }, [refreshTrigger]);
@@ -101,6 +112,8 @@ export default function DepartmentPage() {
         applySearchAndPagination();
     }, [searchTerm, pagination.currentPage, pagination.pageSize, allDepartments, applySearchAndPagination]);
 
+     
+    
     const fetchDepartments = async () => {
         setIsLoading(true);
         try {
@@ -108,6 +121,7 @@ export default function DepartmentPage() {
             const data = await response.data;
 
             setAllDepartments(data.data);
+            await fetchAllUnits(data.data);
             setPagination(prev => ({
                 ...prev,
                 totalItems: data.data.length,
@@ -120,6 +134,24 @@ export default function DepartmentPage() {
             setIsLoading(false);
         }
     };
+    
+    const fetchAllUnits = async (depts: Department[]) => {
+        try {
+            const results = await Promise.all(
+                depts.map(dept =>
+                    api.get(`/v1/department/${dept.id}/units`)
+                        .then(res => ({id: dept.id, units: (res.data.data || []) as Unit[]}))
+                        .catch(() => ({id: dept.id, units: [] as Unit[]}))
+                )
+            );
+            const map: Record<string, Unit[]> = {};
+            results.forEach(r => { map[r.id] = r.units; });
+            setDepartmentUnits(map);
+        } catch (error) {
+            console.error("Error fetching department units", {error});
+        }
+    };
+   
 
     const getPageNumbers = () => {
         const totalPages = pagination.totalPages;
@@ -149,7 +181,7 @@ export default function DepartmentPage() {
             const data = await response.data;
 
             refreshDepartments();
-            toast.success("Department Deleted", {description: data.message});
+            toast.success("Section Deleted", {description: data.message});
         } catch (error) {
             toast.error("Failed to delete department", {
                 description: error.response?.data.message || 'Something went wrong. Please try again'
@@ -193,22 +225,22 @@ export default function DepartmentPage() {
         <div className="space-y-6 w-4xl">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold">Department Management</h1>
+                    <h1 className="text-2xl font-bold">Section Management</h1>
                     <p className="text-muted-foreground">
-                        Assigning letters to specific departments ensures organized workflows and accountability
+                        Assigning letters to specific sections ensures organized workflows and accountability
                     </p>
                 </div>
                 <Button onClick={() => setIsAddModalOpen(true)}>
                     <Plus className="mr-2 h-4 w-4"/>
-                    Add Department
+                    Add Section
                 </Button>
             </div>
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Department List</CardTitle>
+                    <CardTitle>Section List</CardTitle>
                     <CardDescription>
-                        This section lists all departments that can be assigned to letters
+                        This section lists all sections that can be assigned to letters
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -216,7 +248,7 @@ export default function DepartmentPage() {
                         <div className="relative w-full sm:w-100">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"/>
                             <Input
-                                placeholder="Search departments..."
+                                placeholder="Search sections..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="pl-8 w-full"
@@ -250,13 +282,14 @@ export default function DepartmentPage() {
                                         <TableRow>
                                             <TableHead className="text-center">ID</TableHead>
                                             <TableHead>Name</TableHead>
+                                             <TableHead className="text-center">Sub-Units</TableHead>  
                                             <TableHead className="text-center">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {isLoading ? (
                                             <TableRow>
-                                                <TableCell colSpan={8} className="h-90 text-center p-0">
+                                                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                                                     <div
                                                         className="w-full flex flex-col items-center justify-center py-8">
                                                         <div className="flex items-center justify-center space-x-2">
@@ -268,18 +301,18 @@ export default function DepartmentPage() {
                                                                 className="h-4 w-4 bg-primary/60 rounded-full animate-bounce"></div>
                                                         </div>
                                                         <p className="text-sm text-muted-foreground mt-4">Loading
-                                                            department
+                                                            section
                                                             data...</p>
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
-                                        ) : departments.length === 0 ? (
+                                      ) : departments.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={5}
+                                                <TableCell colSpan={6}
                                                            className="text-center py-8 text-muted-foreground">
                                                     {searchTerm ?
-                                                        "No departments found matching your search." :
-                                                        "No departments found. Create a new department to get started."}
+                                                        "No sections found matching your search." :
+                                                        "No sections found. Create a new section to get started."}
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
@@ -290,6 +323,30 @@ export default function DepartmentPage() {
                                                     </TableCell>
                                                     <TableCell
                                                         className="font-medium truncate max-w-40">{department.name}</TableCell>
+                                                    <TableCell
+                                                        onClick={() => { setUnitsDepartment(department); setUnitsDialogOpen(true); }}
+                                                        className="cursor-pointer"
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="inline-flex items-center justify-center min-w-6 h-6 px-2 rounded-full bg-primary/10 text-primary text-xs font-semibold shrink-0">
+                                                                {departmentUnits[department.id]?.length ?? 0}
+                                                            </span>
+                                                            {(departmentUnits[department.id]?.length ?? 0) === 0 ? (
+                                                                <span className="text-xs text-muted-foreground">No sub-units</span>
+                                                            ) : (
+                                                                <div className="flex flex-wrap gap-1 max-w-60">
+                                                                    {departmentUnits[department.id].map(unit => (
+                                                                        <span
+                                                                            key={unit.id}
+                                                                            className="inline-flex items-center px-2 py-0.5 rounded-full bg-muted hover:bg-muted/70 text-xs font-medium whitespace-nowrap transition-colors"
+                                                                        >
+                                                                            {unit.name}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
                                                     <TableCell className="text-center">
                                                         <div className="flex items-center justify-center h-full">
                                                             <DropdownMenu>
@@ -310,6 +367,10 @@ export default function DepartmentPage() {
                                                                     >
                                                                         <Trash2 className="mr-2 h-4 w-4"/>
                                                                         Delete
+                                                                    </DropdownMenuItem>
+                                                                    <DropdownMenuItem onClick={() => { setUnitsDepartment(department); setUnitsDialogOpen(true); }}>
+                                                                        <Layers className="mr-2 h-4 w-4"/>
+                                                                        Manage Units
                                                                     </DropdownMenuItem>
                                                                 </DropdownMenuContent>
                                                             </DropdownMenu>
@@ -414,6 +475,12 @@ export default function DepartmentPage() {
                 deleteAlert={deleteAlert}
                 setDeleteAlert={setDeleteAlert}
                 onSuccess={handleDeleteConfirm}
+            />
+            <ManageUnitsDialog
+                isOpen={unitsDialogOpen}
+                onClose={() => setUnitsDialogOpen(false)}
+                department={unitsDepartment}
+                onUnitsChanged={() => fetchAllUnits(allDepartments)}
             />
         </div>
     );

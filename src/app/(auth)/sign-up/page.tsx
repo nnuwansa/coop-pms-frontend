@@ -22,6 +22,7 @@ const signUpSchema = z.object({
     fullNameId: z.string().min(1, 'Please select your name'),
     email: z.string().min(1, 'Email is required').email('Invalid email address').max(150),
     designationId: z.string().optional(),
+    departmentId: z.string().optional(),
     employee_id: z.string().max(50).optional().or(z.literal('')),
     nic: z.string().max(20).optional().or(z.literal('')),
     password: z.string()
@@ -44,11 +45,14 @@ export default function SignUpPage() {
     const [designations, setDesignations] = useState<{id: number; name: string}[]>([]);
     const [nameSearch, setNameSearch] = useState("");
 const [designationSearch, setDesignationSearch] = useState("");
+const [departmentUnits, setDepartmentUnits] = useState<{id: number; name: string}[]>([]);
 
     useEffect(() => {
         api.get('/v1/employee_name/public-list').then(r => setNames(r.data.data)).catch(console.error);
         api.get('/v1/designation/public-list').then(r => setDesignations(r.data.data)).catch(console.error);
     }, []);
+
+    
 
     const form = useForm({
         resolver: zodResolver(signUpSchema),
@@ -62,6 +66,17 @@ const [designationSearch, setDesignationSearch] = useState("");
             confirmPassword: '',
         },
     });
+// watch the department field (adjust field name to match your actual sign-up form)
+const selectedDepartmentId = form.watch('departmentId'); 
+
+
+useEffect(() => {
+    if (!selectedDepartmentId) { setDepartmentUnits([]); return; }
+    api.get(`/v1/department/${selectedDepartmentId}/units`)
+        .then(r => setDepartmentUnits(r.data.data || []))
+        .catch(console.error);
+}, [selectedDepartmentId]);
+
 
     // split full name into first/last since backend still stores both
     const onSubmit = async (data: z.infer<typeof signUpSchema>) => {

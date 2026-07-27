@@ -37,7 +37,7 @@ export function AddDepartmentAccountModal({isOpen, onClose, departments, onSucce
                 email: data.email,
                 password: data.password,
             });
-            toast.success("Department account created successfully");
+            toast.success("Section account created successfully");
             form.reset();
             onClose();
             onSuccess?.();
@@ -52,17 +52,17 @@ export function AddDepartmentAccountModal({isOpen, onClose, departments, onSucce
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-[440px]">
                 <DialogHeader>
-                    <DialogTitle>Add Department Account</DialogTitle>
-                    <DialogDescription>Create a login for a department to receive and act on letters.</DialogDescription>
+                    <DialogTitle>Add Section Account</DialogTitle>
+                    <DialogDescription>Create a login for a section to receive and act on letters.</DialogDescription>
                 </DialogHeader>
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                         <FormField control={form.control} name="departmentId" render={({field}) => (
                             <FormItem>
-                                <FormLabel>Department</FormLabel>
+                                <FormLabel>Section</FormLabel>
                                 <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
-                                    <FormControl>
-                                        <SelectTrigger className="w-full"><SelectValue placeholder="Select department"/></SelectTrigger>
+                                    <FormControl>   
+                                        <SelectTrigger className="w-full"><SelectValue placeholder="Select section"/></SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
                                         {departments.map((d) => (

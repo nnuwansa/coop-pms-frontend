@@ -94,6 +94,7 @@ interface User {
     first_name: string;
     last_name: string;
     department: string | null;
+    department_unit: string | null;   // NEW
     role: string | null;
     designation: string | null;
     status: string;
@@ -207,15 +208,16 @@ const [isDeptAccountModalOpen, setIsDeptAccountModalOpen] = useState(false);
 
     // Column visibility state
     const [columnVisibility, setColumnVisibility] = useState({
-        id: true,
-        first_name: true,
-        last_name: true,
-        email: true,
-        role: true,
-        department: true,
-        designation: true,
-        status: true,
-    });
+    id: true,
+    first_name: true,
+    last_name: true,
+    email: true,
+    role: true,
+    department: true,
+    department_unit: true,   // NEW
+    designation: true,
+    status: true,
+});
 
     
 
@@ -521,7 +523,7 @@ const handleNamesChanged = () => {
                     </Link>
                     <Button variant="outline" onClick={() => setIsDeptAccountModalOpen(true)}>
     <Briefcase className="mr-2 h-4 w-4"/>
-    Add Department Account
+    Add Section Account
 </Button>
                 </div>
             </div>
@@ -629,9 +631,11 @@ const handleNamesChanged = () => {
                                     last_name: "Last Name",
                                     email: "Email",
                                     role: "Role",
-                                    department: "Department",
+                                    department: "Section",
+                                    department_unit: "Sub-Unit",   // NEW
                                     designation: "Designation",
                                     status: "Status"
+
                                 }).map(([key, label]) => (
                                     <DropdownMenuCheckboxItem
                                         key={key}
@@ -794,7 +798,7 @@ const handleNamesChanged = () => {
                                             }))}
                                         >
                                             <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select a Department"/>
+                                                <SelectValue placeholder="Select a Section"/>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {departments.map((dept) => (
@@ -894,7 +898,8 @@ const handleNamesChanged = () => {
                                     {/* {columnVisibility.last_name && <TableHead>Last Name</TableHead>} */}
                                     {columnVisibility.email && <TableHead>Email</TableHead>}
                                     {columnVisibility.role && <TableHead>Role</TableHead>}
-                                    {columnVisibility.department && <TableHead>Department</TableHead>}
+                                    {columnVisibility.department && <TableHead>Section</TableHead>}
+                                    {columnVisibility.department_unit && <TableHead> Unit</TableHead>}
                                     {columnVisibility.designation && <TableHead>Designation</TableHead>}
                                     {columnVisibility.status && <TableHead className="text-center">Status</TableHead>}
                                     <TableHead></TableHead>
@@ -957,6 +962,8 @@ const handleNamesChanged = () => {
                                                 className="truncate max-w-[150px]">{user.role || "—"}</TableCell>}
                                             {columnVisibility.department && <TableCell
                                                 className="truncate max-w-[150px]">{user.department || "—"}</TableCell>}
+                                            {columnVisibility.department_unit && <TableCell
+                                                className="truncate max-w-[150px]">{user.department_unit || "—"}</TableCell>}
                                             {columnVisibility.designation && <TableCell
                                                 className="truncate max-w-[150px]">{user.designation || "—"}</TableCell>}
                                             {columnVisibility.status &&

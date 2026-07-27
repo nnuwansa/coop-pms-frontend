@@ -171,7 +171,7 @@ const LetterFormat = ({_ref, letterData}: LetterFormatProps) => {
                                     <strong>Date:</strong> {formatDate(remark.create_datetime)}</p>
                                 <p style={styles.remarkField}><strong>Content:</strong> {remark.content}</p>
                                 {remark.department && (
-                                    <p style={styles.remarkField}><strong>Department:</strong> {remark.department}</p>
+                                    <p style={styles.remarkField}><strong>Section:</strong> {remark.department}</p>
                                 )}
                                 {remark.assignee && (
                                     <p style={styles.remarkField}><strong>Assignee:</strong> {remark.assignee}</p>

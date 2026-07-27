@@ -73,6 +73,10 @@ export function PermissionsManager({isOpen, onClose, selectedRole, onSuccess}: P
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const [statuses, setStatuses] = useState<StatusOption[]>([]);
 const [selectedStatusIds, setSelectedStatusIds] = useState<number[]>([]);
+const [assignableDepartments, setAssignableDepartments] = useState<{id: number; name: string}[]>([]);
+const [selectedAssignableDeptIds, setSelectedAssignableDeptIds] = useState<number[]>([]);
+const [allRoles, setAllRoles] = useState<{id: number; name: string}[]>([]);
+const [selectedAssignableRoleIds, setSelectedAssignableRoleIds] = useState<number[]>([]);
 
 // Move fetchPermissions to useCallback to include in dependency arrays
     const fetchPermissions = useCallback(async () => {
@@ -168,6 +172,9 @@ const fetchRolePermissions = useCallback(async (roleId: string, currentPermissio
 
         setFormData(newFormData);
         setSelectedStatusIds(data.status_ids || []);   // NEW
+        setSelectedStatusIds(data.status_ids || []);
+setSelectedAssignableDeptIds(data.assignable_department_ids || []);   // NEW
+setSelectedAssignableRoleIds(data.assignable_role_ids || []);          // NEW
     } catch (error) {
         console.error(`Error fetching permissions for role ${roleId}:`, error);
         toast.error(`Failed to load permissions for ${selectedRole?.name}. Please try again.`);
@@ -175,6 +182,14 @@ const fetchRolePermissions = useCallback(async (roleId: string, currentPermissio
         setIsLoading(false);
     }
 }, [selectedRole?.name]);
+
+
+const toggleAssignableDept = (id: number) => {
+    setSelectedAssignableDeptIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+};
+const toggleAssignableRole = (id: number) => {
+    setSelectedAssignableRoleIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+};
 
 // Update the load effect to also fetch statuses
 useEffect(() => {
@@ -210,6 +225,8 @@ const handlePermissionSubmit = async () => {
         const response = await api.put(`/v1/role/${selectedRole.id}/permissions`, {
             permission_ids: formData.permissionIds,
             status_ids: selectedStatusIds,   // NEW
+            assignable_department_ids: selectedAssignableDeptIds,   // NEW
+    assignable_role_ids: selectedAssignableRoleIds,          // NEW
         });
 
         toast.success(response?.data.message);
@@ -222,30 +239,37 @@ const handlePermissionSubmit = async () => {
         setIsSaving(false);
     }
 };
+const fetchAssignableOptions = useCallback(async () => {
+    try {
+        const [deptRes, roleRes] = await Promise.all([
+            api.get('/v1/department/list'),
+            api.get('/v1/role/list'),
+        ]);
+        setAssignableDepartments(deptRes.data.data || []);
+        setAllRoles(roleRes.data.data || []);
+    } catch (error) {
+        console.error('Error fetching assignable options:', error);
+    }
+}, []);
 
 // Combined loading effect without dependency issues
     useEffect(() => {
-        if (isOpen && selectedRole) {
-            const loadData = async () => {
-                try {
-                    // First load the permissions and get the result directly
-                    const loadedPermissions = await fetchPermissions();
-                    // Then load role permissions with the just-loaded permissions
-                    if (loadedPermissions.length > 0) {
-                        await fetchRolePermissions(selectedRole.id, loadedPermissions);
-                    }
-                } catch (error) {
-                    console.error("Error in permission loading sequence:", error);
+    if (isOpen && selectedRole) {
+        const loadData = async () => {
+            try {
+                const loadedPermissions = await fetchPermissions();
+                await fetchStatuses();
+                await fetchAssignableOptions();   // NEW
+                if (loadedPermissions.length > 0) {
+                    await fetchRolePermissions(selectedRole.id, loadedPermissions);
                 }
-            };
-
-            loadData().catch(
-                (error) => {
-                    console.error("Error loading permissions:", error);
-                }
-            )
-        }
-    }, [isOpen, selectedRole, fetchPermissions, fetchRolePermissions]);
+            } catch (error) {
+                console.error("Error in permission loading sequence:", error);
+            }
+        };
+        loadData().catch((error) => console.error("Error loading permissions:", error));
+    }
+}, [isOpen, selectedRole, fetchPermissions, fetchRolePermissions, fetchStatuses, fetchAssignableOptions]);
 
     const handlePermissionChange = (permissionId: number, checked: boolean) => {
         setFormData(prev => {
@@ -291,11 +315,18 @@ const handlePermissionSubmit = async () => {
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-3xl">
                 <DialogHeader>
-                    <DialogTitle>Manage Permissions</DialogTitle>
-                    <DialogDescription>
-                        Configure permissions for {selectedRole?.name}
-                    </DialogDescription>
-                </DialogHeader>
+    <DialogTitle className="flex items-center gap-2">
+        Manage Permissions
+        {!isLoading && (
+            <span className="text-sm font-normal text-muted-foreground">
+                ({formData.permissionIds.length}/{permissions.reduce((sum, cat) => sum + cat.permissions.length, 0)} selected)
+            </span>
+        )}
+    </DialogTitle>
+    <DialogDescription>
+        Configure permissions for {selectedRole?.name}
+    </DialogDescription>
+</DialogHeader>
 
                 {isLoading ? (
                     <div className="flex items-center justify-center h-[400px]">
@@ -384,6 +415,51 @@ const handlePermissionSubmit = async () => {
                                                                 ))}
                                                             </div>
                                                         )}
+                                                        {permission.code === "letter.assign" && formData.permissionIds.includes(permission.id) && (
+                                                            <div className="ml-8 border rounded-md p-3 space-y-3 bg-muted/30">
+                                                                <div>
+                                                                    <p className="text-xs font-medium text-muted-foreground mb-1">
+                                                                        Sections this role can assign letters to:
+                                                                    </p>
+                                                                    {assignableDepartments.length === 0 ? (
+                                                                        <p className="text-sm text-muted-foreground">No sections available</p>
+                                                                    ) : assignableDepartments.map(dept => (
+                                                                        <div key={dept.id} className="flex items-center space-x-2">
+                                                                            <Checkbox
+                                                                                disabled={isSaving}
+                                                                                id={`assign-dept-${dept.id}`}
+                                                                                checked={selectedAssignableDeptIds.includes(dept.id)}
+                                                                                onCheckedChange={() => toggleAssignableDept(dept.id)}
+                                                                            />
+                                                                            <label htmlFor={`assign-dept-${dept.id}`} className="text-sm cursor-pointer">
+                                                                                {dept.name}
+                                                                            </label>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-xs font-medium text-muted-foreground mb-1">
+                                                                        Roles this role can assign letters to:
+                                                                    </p>
+                                                                    {allRoles.length === 0 ? (
+                                                                        <p className="text-sm text-muted-foreground">No roles available</p>
+                                                                    ) : allRoles.map(role => (
+                                                                        <div key={role.id} className="flex items-center space-x-2">
+                                                                            <Checkbox
+                                                                                disabled={isSaving}
+                                                                                id={`assign-role-${role.id}`}
+                                                                                checked={selectedAssignableRoleIds.includes(role.id)}
+                                                                                onCheckedChange={() => toggleAssignableRole(role.id)}
+                                                                            />
+                                                                            <label htmlFor={`assign-role-${role.id}`} className="text-sm cursor-pointer">
+                                                                                {role.name}
+                                                                            </label>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
                                                     </div>
                                                 ))}
                                             </div>

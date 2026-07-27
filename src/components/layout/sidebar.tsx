@@ -56,13 +56,12 @@ const menuItems: MenuItem[] = [
         submenu: [
             {
                 title: 'Organization',
-                href: '/settings/organization',
-                icon: <Building2 className="h-4 w-4"/>,
+                href: '/settings/organization',                icon: <Building2 className="h-4 w-4"/>,
                 permission: 'settings.view',
             },
             {
-                title: 'Department',
-                href: '/settings/department',
+                title: 'Sections',
+                href: '/settings/section',
                 icon: <Landmark className="h-4 w-4"/>,
                 permission: 'settings.view',
             },

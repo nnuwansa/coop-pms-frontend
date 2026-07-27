@@ -16,12 +16,14 @@ import {Input} from "@/components/ui/input";
 import {Button} from "@/components/ui/button";
 import {Loader2} from "lucide-react";
 import api from "@/lib/api";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // Define the form schema with Zod
 const formSchema = z.object({
     name: z.string()
         .min(1, "Status name is required")
         .max(40, "Status name must be less than 40 characters"),
+    requiresFileName: z.boolean().default(false),   // NEW
 });
 
 // Define type for form values
@@ -42,6 +44,7 @@ export function AddDialog({isOpen, onClose, onSuccess}: AddDialogProps) {
         resolver: zodResolver(formSchema),
         defaultValues: {
             name: "",
+            requiresFileName: false,
         },
     });
 
@@ -52,6 +55,7 @@ export function AddDialog({isOpen, onClose, onSuccess}: AddDialogProps) {
             const response = await api.post('/v1/status/',
                 {
                     name: values.name,
+                    requires_file_name: values.requiresFileName,   // NEW
                 });
 
             const responseData = await response.data;
@@ -94,6 +98,15 @@ export function AddDialog({isOpen, onClose, onSuccess}: AddDialogProps) {
                                 </FormItem>
                             )}
                         />
+                        
+                            <FormField control={form.control} name="requiresFileName" render={({field}) => (
+                                <FormItem className="flex items-center space-x-2">
+                                    <FormControl>
+                                        <Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isSubmitting}/>
+                                    </FormControl>
+                                    <FormLabel className="!mt-0 cursor-pointer">Require File Name when this status is selected</FormLabel>
+                                </FormItem>
+                            )}/>
 
                         <DialogFooter>
                             <Button

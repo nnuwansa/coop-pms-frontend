@@ -19,9 +19,8 @@ import api from "@/lib/api";
 
 // Define the form schema with Zod
 const formSchema = z.object({
-    name: z.string()
-        .min(1, "Department name is required")
-        .max(75, "Department name must be less than 75 characters"),
+    name: z.string().min(1, "Section name is required").max(75),
+    email: z.string().email("Invalid email").max(150).optional().or(z.literal("")),   // NEW
 });
 
 // Define type for form values
@@ -42,6 +41,7 @@ export function AddDialog({isOpen, onClose, onSuccess}: AddDialogProps) {
         resolver: zodResolver(formSchema),
         defaultValues: {
             name: "",
+            email: "",
         },
     });
 
@@ -52,7 +52,9 @@ export function AddDialog({isOpen, onClose, onSuccess}: AddDialogProps) {
             const response = await api.post('/v1/department/',
                 {
                     name: values.name,
+                    email: values.email|| null, 
                 });
+               
 
             const responseData = await response.data;
             toast.success(responseData.message);
@@ -71,9 +73,9 @@ export function AddDialog({isOpen, onClose, onSuccess}: AddDialogProps) {
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Add Department</DialogTitle>
+                    <DialogTitle>Add Section</DialogTitle>
                     <DialogDescription>
-                        Create a new department
+                        Create a new section
                     </DialogDescription>
                 </DialogHeader>
 
@@ -84,16 +86,25 @@ export function AddDialog({isOpen, onClose, onSuccess}: AddDialogProps) {
                             name="name"
                             render={({field}) => (
                                 <FormItem>
-                                    <FormLabel>Department Name</FormLabel>
+                                    <FormLabel>Section Name</FormLabel>
                                     <FormControl>
                                         <Input
                                             disabled={isSubmitting}
-                                            placeholder="Enter department name" {...field} />
+                                            placeholder="Enter section  name" {...field} />
                                     </FormControl>
                                     <FormMessage/>
                                 </FormItem>
                             )}
                         />
+                        <FormField control={form.control} name="email" render={({field}) => (
+                            <FormItem>
+                                <FormLabel>Email</FormLabel>
+                                <FormControl>
+                                    <Input disabled={isSubmitting} placeholder="Enter section email" {...field}/>
+                                </FormControl>
+                                <FormMessage/>
+                            </FormItem>
+                        )}/>
 
                         <DialogFooter>
                             <Button
@@ -113,7 +124,7 @@ export function AddDialog({isOpen, onClose, onSuccess}: AddDialogProps) {
                                         <Loader2 className="animate-spin"/>
                                         Creating...
                                     </>
-                                ) : "Create Department"}
+                                ) : "Create Section"}
                             </Button>
                         </DialogFooter>
                     </form>

@@ -25,7 +25,9 @@ interface UpdateUserPayload {
     role_id: number;
     is_active: boolean;
     password?: string;
-}
+    department_unit_id?: number | null;
+};
+
 
 const formSchema = z.object({
     firstName: z.string().min(1, 'First name is required').max(50),
@@ -34,6 +36,7 @@ const formSchema = z.object({
     employeeId: z.string().max(50).optional().or(z.literal('')),
     nic: z.string().max(20).optional().or(z.literal('')),
     designation: z.string().optional().or(z.literal('')),
+    departmentUnit: z.string().optional().or(z.literal('')),   // NEW
     password: z.string()
         .optional()
         .refine((val) => !val || val.length >= 8, 'Password must be at least 8 characters')
@@ -53,6 +56,8 @@ export function UpdateUserModal({isUpdateModalOpen, setIsUpdateModalOpen, userDa
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+const [departmentUnits, setDepartmentUnits] = useState<{id: number; name: string}[]>([]);
+
 
     const findIdByName = (items, name) => {
         const item = items.find(item => item.name === name);
@@ -72,9 +77,13 @@ export function UpdateUserModal({isUpdateModalOpen, setIsUpdateModalOpen, userDa
             confirmPassword: "",
             role: findIdByName(roles, userData?.role),
             department: findIdByName(departments, userData?.department),
+            departmentUnit: findIdByName(departmentUnits || [], userData?.department_unit),
             status: findIdByName(statuses, userData?.status)
+            
         }
     });
+
+const selectedDepartmentId = form.watch('department');
 
     useEffect(() => {
         if (userData) {
@@ -85,6 +94,7 @@ export function UpdateUserModal({isUpdateModalOpen, setIsUpdateModalOpen, userDa
                 employeeId: userData.employee_id || "",
                 nic: userData.nic || "",
                 designation: findIdByName(designations || [], userData.designation),
+                departmentUnit: findIdByName(departmentUnits || [], userData?.department_unit),
                 password: "",
                 confirmPassword: "",
                 role: findIdByName(roles, userData.role),
@@ -96,6 +106,13 @@ export function UpdateUserModal({isUpdateModalOpen, setIsUpdateModalOpen, userDa
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userData, form, roles, departments, designations, statuses]);
+
+    useEffect(() => {
+    if (!selectedDepartmentId) { setDepartmentUnits([]); return; }
+    api.get(`/v1/department/${selectedDepartmentId}/units`)
+        .then(r => setDepartmentUnits(r.data.data || []))
+        .catch(console.error);
+}, [selectedDepartmentId]);
 
     const onSubmit = async (data) => {
         try {
@@ -109,7 +126,8 @@ export function UpdateUserModal({isUpdateModalOpen, setIsUpdateModalOpen, userDa
                 designation_id: data.designation ? parseInt(data.designation) : null,
                 department_id: parseInt(data.department),
                 role_id: parseInt(data.role),
-                is_active: data.status === "1"
+                is_active: data.status === "1",
+                department_unit_id: data.departmentUnit ? parseInt(data.departmentUnit) : null  
             };
             if (data.password) payload.password = data.password;
 
@@ -299,12 +317,12 @@ export function UpdateUserModal({isUpdateModalOpen, setIsUpdateModalOpen, userDa
 
                         <FormField control={form.control} name="department" render={({field}) => (
                             <FormItem>
-                                <FormLabel>Department</FormLabel>
+                                <FormLabel>Section</FormLabel>
                                 <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting}>
                                     <FormControl className="w-full">
                                         <SelectTrigger>
                                             <div className="w-[400px] overflow-hidden">
-                                                <SelectValue placeholder="Select department"/>
+                                                <SelectValue placeholder="Select section"/>
                                             </div>
                                         </SelectTrigger>
                                     </FormControl>
@@ -317,6 +335,24 @@ export function UpdateUserModal({isUpdateModalOpen, setIsUpdateModalOpen, userDa
                                 <FormMessage/>
                             </FormItem>
                         )}/>
+                         <FormField control={form.control} name="departmentUnit" render={({field}) => (
+                                <FormItem>
+                                    <FormLabel>Sub-Unit (optional)</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting || departmentUnits.length === 0}>
+                                        <FormControl className="w-full">
+                                            <SelectTrigger>
+                                                <SelectValue placeholder={departmentUnits.length === 0 ? "No sub-units for this section" : "Select sub-unit"}/>
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            {departmentUnits.map((u) => (
+                                                <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage/>
+                                </FormItem>
+                            )}/>
 
                         <FormField control={form.control} name="status" render={({field}) => (
                             <FormItem>

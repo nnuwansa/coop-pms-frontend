@@ -1,3 +1,4 @@
+
 'use client';
 
 import {useCallback, useEffect, useRef, useState} from "react";
@@ -58,6 +59,7 @@ interface LetterDetail {
     status_id: number;
     departments: {id: number; name: string}[];
     assignees: {id: number; name: string}[];
+    recommended_to?: {id: number; name: string} | null;   // NEW — separate from assignees
     attachments: AttachmentItem[];
     completion_file_name?: string | null;   // NEW
     cheque_deposited?: boolean;
@@ -111,8 +113,8 @@ interface RemarkHistoryEntry {
 }
 
 interface Department {id: number; name: string}
-interface Status {id: number; name: string}
-interface Assignee {id: number; name: string}
+interface Status {id: number; name: string; requires_file_name?: boolean;}   // CHANGED
+interface Assignee {id: number; name: string; department_id?: number | null; department_unit_id?: number | null}
 
 type LeftTab = 'remarks' | 'history' | 'remarkLog';
 
@@ -122,7 +124,7 @@ const getStatusClassName = (status: string): string => {
     if (status === 'New') return 'bg-sky-100 text-sky-800 dark:bg-sky-800 dark:text-sky-200';
     if (status === 'Assigned') return 'bg-orange-100 text-yellow-800 dark:bg-orange-800 dark:text-yellow-200';
     if (status === 'In Progress') return 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200';
-    if (status === 'Rejected') return 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200';
+   if (status === 'Not Relevant') return 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200';   // CHANGED
     return 'bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-200';
 };
 
@@ -305,9 +307,26 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
     const [allDepartments, setAllDepartments] = useState<Department[]>([]);
     const [allStatuses, setAllStatuses] = useState<Status[]>([]);
     const [allAssignees, setAllAssignees] = useState<Assignee[]>([]);
+    // NEW — narrows the Assignees checklist by Department, then Sub-Unit
+    // (if that department has any), plus free-text search.
+    const [assigneeDeptFilter, setAssigneeDeptFilter] = useState<number>(0);
+    const [assigneeUnitFilter, setAssigneeUnitFilter] = useState<number>(0);
+    const [assigneeUnits, setAssigneeUnits] = useState<{id: number; name: string}[]>([]);
+    const [assigneeSearch, setAssigneeSearch] = useState("");
     const [selectedDeptIds, setSelectedDeptIds] = useState<number[]>([]);
     const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<number[]>([]);
     const [selectedStatusId, setSelectedStatusId] = useState<number>(0);
+    // NEW — "Recommended To" is its own selection, entirely separate from
+    // Assignees, so picking who to recommend the letter to never removes the
+    // person the letter is actually assigned to.
+    const [selectedRecommendedToId, setSelectedRecommendedToId] = useState<number>(0);
+    const [originalRecommendedToId, setOriginalRecommendedToId] = useState<number>(0);
+    // NEW — "Send to Recommendation" is now a standalone checkbox, independent
+    // of whatever status is selected. Previously this was driven by checking
+    // whether the Status dropdown happened to say "Recommendation", which
+    // forced people to change the status just to recommend a letter.
+    const [sendToRecommendation, setSendToRecommendation] = useState(false);
+    const [originalSendToRecommendation, setOriginalSendToRecommendation] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [activeTab, setActiveTab] = useState<LeftTab>('remarks');
     const [remarks, setRemarks] = useState<Remark[]>([]);
@@ -319,8 +338,8 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
     const [showEditModal, setShowEditModal] = useState(false);
     const [previewAttachment, setPreviewAttachment] = useState<AttachmentItem | null>(null);
     const [completionFileName, setCompletionFileName] = useState("");
-    const selectedStatusName = allStatuses.find(s => s.id === selectedStatusId)?.name || "";
-const isCompletingNow = selectedStatusName.trim().toLowerCase() === "completed";
+   const selectedStatusObj = allStatuses.find(s => s.id === selectedStatusId);
+const isFileNameRequiredNow = !!selectedStatusObj?.requires_file_name;   // CHANGED — generalized
 const [chequeDeposited, setChequeDeposited] = useState(false);
 const [chequeDepositDate, setChequeDepositDate] = useState("");
 const [chequeAccountNo, setChequeAccountNo] = useState("");
@@ -352,7 +371,9 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
     const isDirty =
         selectedStatusId !== originalStatusId ||
         !arraysEqual(selectedDeptIds, originalDeptIds) ||
-        !arraysEqual(selectedAssigneeIds, originalAssigneeIds);
+        !arraysEqual(selectedAssigneeIds, originalAssigneeIds) ||
+        selectedRecommendedToId !== originalRecommendedToId ||   // NEW
+        sendToRecommendation !== originalSendToRecommendation;   // NEW
 
     const isDirtyRef = useRef(isDirty);
     useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
@@ -360,6 +381,21 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
     // Custom "unsaved changes" popup dialog state.
     const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
     const pendingActionRef = useRef<(() => void) | null>(null);
+
+    // NEW — fetch this department's sub-units whenever the assignee dept filter changes
+    useEffect(() => {
+        setAssigneeUnitFilter(0);
+        if (!assigneeDeptFilter) { setAssigneeUnits([]); return; }
+        api.get(`/v1/department/${assigneeDeptFilter}/units`)
+            .then(r => setAssigneeUnits(r.data.data || []))
+            .catch(() => setAssigneeUnits([]));
+    }, [assigneeDeptFilter]);
+
+    const filteredAssignees = allAssignees.filter(a =>
+        (!assigneeDeptFilter || a.department_id === assigneeDeptFilter) &&
+        (!assigneeUnitFilter || a.department_unit_id === assigneeUnitFilter) &&
+        (!assigneeSearch.trim() || a.name.toLowerCase().includes(assigneeSearch.trim().toLowerCase()))
+    );
 
     const requestNavigation = (action: () => void) => {
         if (isDirtyRef.current) {
@@ -412,6 +448,11 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
             setChequeAccountNo(data.cheque_account_no || "");
             setChequeBank(data.cheque_bank || "");
             setChequeBranch(data.cheque_branch || "");
+            setCompletionFileName(data.completion_file_name || "");   // NEW — keep the input in sync with saved value
+            setSelectedRecommendedToId(data.recommended_to?.id || 0);   // NEW
+            setOriginalRecommendedToId(data.recommended_to?.id || 0);   // NEW
+            setSendToRecommendation(!!data.recommended_to);   // NEW
+            setOriginalSendToRecommendation(!!data.recommended_to);   // NEW
 
             if (deptRes.data.success) setAllDepartments(deptRes.data.data);
             if (statusRes.data.success) setAllStatuses(statusRes.data.data);
@@ -529,8 +570,12 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
     // ── Save assignment ───────────────────────────────────────────────────────
 
     const handleSave = async () => {
-    if (isCompletingNow && !completionFileName.trim()) {
-        toast.error("File Name is required when marking a letter as Completed");
+    if (isFileNameRequiredNow && !completionFileName.trim()) {   // CHANGED
+        toast.error(`File Name is required when setting status to "${selectedStatusObj?.name}"`);
+        return;
+    }
+    if (sendToRecommendation && !selectedRecommendedToId) {   // CHANGED — now driven by the checkbox, not the status
+        toast.error('Please select who this should be recommended to before saving.');
         return;
     }
     try {
@@ -539,12 +584,15 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
             status_id: selectedStatusId,
             department_ids: selectedDeptIds,
             assignee_ids: selectedAssigneeIds,
-            file_name: isCompletingNow ? completionFileName.trim() : undefined,   // NEW
+            file_name: isFileNameRequiredNow ? completionFileName.trim() : undefined,   // CHANGED
+            recommended_to_id: sendToRecommendation ? selectedRecommendedToId : null,   // CHANGED — explicit null clears it when unchecked
         });
         toast.success("Letter updated successfully");
         setOriginalStatusId(selectedStatusId);
         setOriginalDeptIds(selectedDeptIds);
         setOriginalAssigneeIds(selectedAssigneeIds);
+        setOriginalRecommendedToId(selectedRecommendedToId);   // NEW
+        setOriginalSendToRecommendation(sendToRecommendation);   // NEW
         fetchLetter();
     } catch (error) {
         toast.error(error.response?.data?.message || 'Failed to save changes');
@@ -555,20 +603,26 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
     // Used by "Save Changes and Go Back" in the unsaved-changes dialog.
     // Saves the pending assignment changes first, then runs the queued navigation.
     const handleSaveAndProceed = async () => {
+        if (sendToRecommendation && !selectedRecommendedToId) {   // CHANGED
+            toast.error('Please select who this should be recommended to before saving.');
+            return;
+        }
         try {
             setIsSaving(true);
             await api.put(`/v1/letter/assignment/${id}`, {
                 status_id: selectedStatusId,
                 department_ids: selectedDeptIds,
                 assignee_ids: selectedAssigneeIds,
-                file_name: isCompletingNow ? completionFileName.trim() : undefined,   // NEW
-       
+                file_name: isFileNameRequiredNow ? completionFileName.trim() : undefined,   // NEW
+                recommended_to_id: sendToRecommendation ? selectedRecommendedToId : null,   // CHANGED
             });
             toast.success("Letter updated successfully");
 
             setOriginalStatusId(selectedStatusId);
             setOriginalDeptIds(selectedDeptIds);
             setOriginalAssigneeIds(selectedAssigneeIds);
+            setOriginalRecommendedToId(selectedRecommendedToId);   // NEW
+            setOriginalSendToRecommendation(sendToRecommendation);   // NEW
 
             setShowUnsavedDialog(false);
             const action = pendingActionRef.current;
@@ -924,6 +978,16 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                                         <p className="font-semibold mt-0.5">{letter.other}</p>
                                     </div>
                                 )}
+                                {/* NEW — completion file name, shown whenever a status that required
+                                    a file name was saved with one attached. Kept visible regardless
+                                    of which status is currently selected, so the historical record
+                                    of "what file this was completed/filed under" is never hidden. */}
+                                {letter.completion_file_name && (
+                                    <div className="md:col-span-2">
+                                        <p className="text-sm text-muted-foreground">File Name</p>
+                                        <p className="font-semibold mt-0.5">{letter.completion_file_name}</p>
+                                    </div>
+                                )}
                               {letter.other && (
                                             <>
                                                 <Separator className="my-5"/>
@@ -934,7 +998,14 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                                                                 id="cheque-deposited"
                                                                 checked={chequeDeposited}
                                                                 onCheckedChange={(checked) => setChequeDeposited(!!checked)}
-                                                                disabled={!hasPermission('letter.update') || !isEditingCheque}
+                                                                // FIXED — previously this was disabled whenever `isEditingCheque`
+                                                                // was false, but the "Edit" button that turns `isEditingCheque`
+                                                                // on only renders once `letter.cheque_deposited` is already true
+                                                                // (see the button just below). On a brand new letter that had
+                                                                // never been saved, that meant the checkbox could never be
+                                                                // clicked at all. Now it's only locked once a deposit has
+                                                                // already been saved and the user isn't actively editing it.
+                                                                disabled={!hasPermission('letter.update') || (letter.cheque_deposited && !isEditingCheque)}
                                                             />
                                                             <label htmlFor="cheque-deposited" className="text-sm font-medium cursor-pointer">
                                                                 Cheque Deposited
@@ -1272,29 +1343,6 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                     <Card>
                         <CardContent className="pt-6 space-y-5">
                             {/* Status */}
-                            {/* <div className="space-y-2">
-                                <p className="text-sm font-medium">Status</p>
-                                <Select
-                                    value={selectedStatusId ? selectedStatusId.toString() : ""}
-                                    onValueChange={(v) => setSelectedStatusId(parseInt(v) || 0)}
-                                    disabled={!hasPermission('letter.update')}
-                                >
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Select Status"/>
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {allStatuses.map(s => (
-                                            <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                {letter.status && (
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusClassName(letter.status.name)}`}>
-                                        Current: {letter.status.name}
-                                    </span>
-                                )}
-                            </div> */}
-                            {/* Status */}
 <div className="space-y-2">
     <p className="text-sm font-medium">Status</p>
     <Select
@@ -1317,7 +1365,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                 ))}
         </SelectContent>
     </Select>
-    {isCompletingNow && (
+    {isFileNameRequiredNow && (
     <div className="space-y-1 pt-1">
         <label className="text-xs font-medium text-muted-foreground">
             File Name <span className="text-destructive">*</span>
@@ -1326,7 +1374,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
             type="text"
             value={completionFileName}
             onChange={(e) => setCompletionFileName(e.target.value)}
-            placeholder="Enter the file name for this completed letter"
+            placeholder={`Enter the file name for status "${selectedStatusObj?.name}"`}
             className="w-full rounded-md border px-3 py-2 text-sm"
         />
     </div>
@@ -1339,6 +1387,13 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
             {typeof letter.status_days === 'number' && (
                 <p className="text-xs text-muted-foreground">
                     {letter.status_days} day{letter.status_days !== 1 ? 's' : ''} in this status
+                </p>
+            )}
+            {/* NEW — surface the file name that was recorded for this status,
+                so anyone viewing the letter can see it without opening edit mode */}
+            {letter.completion_file_name && (
+                <p className="text-xs text-muted-foreground">
+                    File Name: <span className="font-medium text-foreground">{letter.completion_file_name}</span>
                 </p>
             )}
 </div>
@@ -1439,25 +1494,115 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                                     <p className="text-sm text-muted-foreground">No assignees assigned</p>
                                 )}
                                 {isEditingAssignees && (
-                                    <div className="border rounded-md p-3 grid grid-cols-1 gap-2 max-h-44 overflow-y-auto">
-                                        {allAssignees.length === 0 ? (
-                                            <p className="text-sm text-muted-foreground">No assignees available</p>
-                                        ) : allAssignees.map(a => (
-                                            <div key={a.id} className="flex items-center space-x-2">
-                                                <Checkbox
-                                                    id={`assignee-${a.id}`}
-                                                    checked={selectedAssigneeIds.includes(a.id)}
-                                                    onCheckedChange={() => toggleAssignee(a.id)}
-                                                    disabled={!hasPermission('letter.assign')}
-                                                />
-                                                <label htmlFor={`assignee-${a.id}`} className="text-sm cursor-pointer leading-tight">
-                                                    {a.name}
-                                                </label>
-                                            </div>
-                                        ))}
+                                    <div className="space-y-2 border rounded-md p-3">
+                                        {/* NEW — narrow down a long assignee list by Department, then
+                                            Sub-Unit (if that department has any), plus free-text search */}
+                                        <div className="grid grid-cols-1 gap-2">
+                                            <Select
+                                                value={assigneeDeptFilter ? assigneeDeptFilter.toString() : "0"}
+                                                onValueChange={(v) => setAssigneeDeptFilter(parseInt(v) || 0)}
+                                            >
+                                                <SelectTrigger className="h-8 text-xs">
+                                                    <SelectValue placeholder="Filter by department"/>
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="0">All departments</SelectItem>
+                                                    {allDepartments.map(d => (
+                                                        <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <Select
+                                                value={assigneeUnitFilter ? assigneeUnitFilter.toString() : "0"}
+                                                onValueChange={(v) => setAssigneeUnitFilter(parseInt(v) || 0)}
+                                                disabled={!assigneeDeptFilter || assigneeUnits.length === 0}
+                                            >
+                                                <SelectTrigger className="h-8 text-xs">
+                                                    <SelectValue placeholder={assigneeUnits.length === 0 ? "No sub-units" : "Filter by sub-unit"}/>
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="0">All sub-units</SelectItem>
+                                                    {assigneeUnits.map(u => (
+                                                        <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <input
+                                            type="text"
+                                            placeholder="Search assignees by name..."
+                                            value={assigneeSearch}
+                                            onChange={(e) => setAssigneeSearch(e.target.value)}
+                                            className="w-full rounded-md border px-2 h-8 text-xs"
+                                        />
+                                        <div className="grid grid-cols-1 gap-2 max-h-44 overflow-y-auto">
+                                            {filteredAssignees.length === 0 ? (
+                                                <p className="text-sm text-muted-foreground">No assignees match this filter</p>
+                                            ) : filteredAssignees.map(a => (
+                                                <div key={a.id} className="flex items-center space-x-2">
+                                                    <Checkbox
+                                                        id={`assignee-${a.id}`}
+                                                        checked={selectedAssigneeIds.includes(a.id)}
+                                                        onCheckedChange={() => toggleAssignee(a.id)}
+                                                        disabled={!hasPermission('letter.assign')}
+                                                    />
+                                                    <label htmlFor={`assignee-${a.id}`} className="text-sm cursor-pointer leading-tight">
+                                                        {a.name}
+                                                    </label>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
                             </div>
+
+                            {/* NEW — Recommended To: entirely separate from Assignees, so
+                                choosing who to recommend the letter to never removes or
+                                overwrites who it's actually assigned to. Editable only
+                                while "Recommendation" is the selected status; the current
+                                saved value stays visible afterwards as a record of who it
+                                was sent to. */}
+                                 <div className="flex items-center space-x-2">
+                                 <Checkbox
+        id="send-to-recommendation"
+        checked={sendToRecommendation}
+        onCheckedChange={(checked) => setSendToRecommendation(!!checked)}
+        disabled={!hasPermission('letter.assign')}
+    />
+    <label htmlFor="send-to-recommendation" className="text-sm font-medium cursor-pointer">
+        Send to Recommendation
+    </label>
+</div>
+                            {(sendToRecommendation || letter.recommended_to) && ( 
+                                <>
+                                    <Separator/>
+                                    <div className="space-y-2">
+                                        <p className="text-sm font-medium">Recommended To</p>
+                                        {sendToRecommendation && hasPermission('letter.assign') ? (
+                                            <Select
+                                                value={selectedRecommendedToId ? selectedRecommendedToId.toString() : ""}
+                                                onValueChange={(v) => setSelectedRecommendedToId(parseInt(v) || 0)}
+                                            >
+                                                <SelectTrigger className="w-full">
+                                                    <SelectValue placeholder="Select who to recommend this to"/>
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {allAssignees.map(a => (
+                                                        <SelectItem key={a.id} value={a.id.toString()}>{a.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        ) : letter.recommended_to ? (
+                                            <Badge variant="secondary" className="text-xs">
+                                                Recommendation: {letter.recommended_to.name}
+                                            </Badge>
+                                        ) : (
+                                            <p className="text-sm text-muted-foreground">Not yet selected</p>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+
 
                             {/* Save */}
                             {(hasPermission('letter.change_status') || hasPermission('letter.change_department') || hasPermission('letter.assign')) && (

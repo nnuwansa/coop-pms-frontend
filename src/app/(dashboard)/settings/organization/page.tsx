@@ -17,7 +17,6 @@ import {
     Trash2
 } from "lucide-react";
 import {toast} from "sonner";
-import {ScrollArea} from "@/components/ui/scroll-area";
 import {DeleteDialog} from "@/app/(dashboard)/settings/organization/delete-dialog";
 import {AddDialog} from "@/app/(dashboard)/settings/organization/add-dialog";
 import {UpdateDialog} from "@/app/(dashboard)/settings/organization/update-dialog";
@@ -31,6 +30,7 @@ interface Organization {
     address?: string;  
     email?: string;     
     telephone?: string;
+    fax_no?: string;   // NEW
 }
 
 interface PaginationState {
@@ -246,19 +246,21 @@ export default function OrganizationPage() {
                     </div>
 
                     <div className="rounded-md border">
-                        <div className="w-full">
-                            <ScrollArea className="w-full"
-                                        style={{height: organizations.length > 15 ? '500px' : 'auto'}}>
-                                <Table>
+                        <div
+                            className="w-full overflow-x-auto"
+                            style={{maxHeight: organizations.length > 15 ? '500px' : 'none', overflowY: organizations.length > 15 ? 'auto' : 'visible'}}
+                        >
+                            <Table className="min-w-[1100px]">
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead className="text-center">ID</TableHead>
                                             <TableHead>Name</TableHead>
                                             <TableHead>Address</TableHead>   
                                             <TableHead>Email</TableHead>     
-                                            <TableHead>Telephone</TableHead> 
-                                            <TableHead className="text-center">Actions</TableHead>
+                                            <TableHead>Telephone</TableHead> <TableHead>Fax No</TableHead>
 
+                                            <TableHead className="text-center sticky right-0 bg-background border-l">Actions</TableHead>
+                                            
 
                                         </TableRow>
                                     </TableHeader>
@@ -297,11 +299,12 @@ export default function OrganizationPage() {
                                                 <TableCell className="text-center">
                                                     {(pagination.currentPage - 1) * pagination.pageSize + index + 1}
                                                 </TableCell>
-                                                <TableCell className="font-medium truncate max-w-40">{organization.name}</TableCell>
+                                               <TableCell className="font-medium">{organization.name}</TableCell>
                                                 <TableCell className="text-muted-foreground">{organization.address || "-"}</TableCell>   
                                                 <TableCell className="text-muted-foreground">{organization.email || "-"}</TableCell>    
                                                 <TableCell className="text-muted-foreground">{organization.telephone || "-"}</TableCell> 
-                                                <TableCell className="text-center">
+                                                <TableCell className="text-muted-foreground">{organization.fax_no || "-"}</TableCell>
+                                                <TableCell className="text-center sticky right-0 bg-background border-l">
                                                         <div className="flex items-center justify-center h-full">
                                                             <DropdownMenu>
                                                                 <DropdownMenuTrigger asChild>
@@ -331,7 +334,6 @@ export default function OrganizationPage() {
                                         )}
                                     </TableBody>
                                 </Table>
-                            </ScrollArea>
                         </div>
                     </div>
 
