@@ -944,7 +944,7 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                                     <SelectValue placeholder="Filter by department"/>
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="0">All departments</SelectItem>
+                                                    <SelectItem value="0">All sections</SelectItem>
                                                     {departments.map(d => (
                                                         <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
                                                     ))}

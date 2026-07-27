@@ -3162,7 +3162,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                                                     <SelectValue placeholder="Filter by department"/>
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="0">All departments</SelectItem>
+                                                    <SelectItem value="0">All sectionss</SelectItem>
                                                     {allDepartments.map(d => (
                                                         <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
                                                     ))}
@@ -3258,7 +3258,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                                                             <SelectValue placeholder="Filter by department"/>
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="0">All departments</SelectItem>
+                                                            <SelectItem value="0">All sections</SelectItem>
                                                             {allDepartments.map(d => (
                                                                 <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
                                                             ))}
