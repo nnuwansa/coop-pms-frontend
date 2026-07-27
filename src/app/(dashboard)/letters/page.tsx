@@ -434,7 +434,7 @@ export default function LetterDashboard() {
     const router = useRouter();
     const [showExportModal, setShowExportModal] = useState<boolean>(false);
     const [currentPage, setCurrentPage] = useState<number>(1);
-    const [pageSize, setPageSize] = useState<number>(10);
+    const [pageSize, setPageSize] = useState<number>(20);
     const [showFilters, setShowFilters] = useState<boolean>(false);
     const [letters, setLetters] = useState<Letter[]>([]);
     const [totalPages, setTotalPages] = useState<number>(0);
