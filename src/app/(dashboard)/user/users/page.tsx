@@ -140,8 +140,8 @@ type UserTab = 'main' | 'department' | 'subunit';
 
 const userTabs: {value: UserTab; label: string}[] = [
     {value: 'main', label: ' Users'},
-    {value: 'department', label: 'Section User Accounts '},
-    {value: 'subunit', label: 'Unit User Accounts'},
+    {value: 'department', label: 'Section Accounts '},
+    {value: 'subunit', label: 'Unit Accounts'},
 ];
 
 const defaultFilters: UserFilters = {
