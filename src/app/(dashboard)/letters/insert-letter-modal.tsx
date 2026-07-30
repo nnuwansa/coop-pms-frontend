@@ -107,7 +107,14 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
     const [isEditingAssignees, setIsEditingAssignees] = useState(false);
     const [sourcePopoverOpen, setSourcePopoverOpen] = useState(false);
     const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
-    const [departmentAccounts, setDepartmentAccounts] = useState<{id: number; department_id: number; department_name: string; email: string}[]>([]);
+    const [departmentAccounts, setDepartmentAccounts] = useState<{
+    id: number;
+    department_id: number;
+    department_name: string;
+    department_unit_id?: number | null;      // NEW
+    department_unit_name?: string | null;    // NEW
+    email: string;
+}[]>([]);
     const [datePopoverOpen, setDatePopoverOpen] = useState(false);
 const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
 
@@ -610,15 +617,17 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                                                                         {filteredOrgs.map(org => (
                                                                                             <CommandItem key={`org-${org.id}`} value={`org-${org.id}`}
                                                                                                 onSelect={() => {
-                                                                                                        field.onChange(org.id);
-                                                                                                        const o = organizations.find(x => x.id === org.id);
-                                                                                                        if (o?.email) setValue('email', o.email);
-                                                                                                        if (o?.telephone) setValue('telephone', o.telephone);
-                                                                                                        if (o?.address) setValue('sender', o.address);
-                                                                                                        setSelectedSenderLabel(org.name); // NEW
-                                                                                                        setOrgPopoverOpen(false);
-                                                                                                        setOrgSearch("");
-                                                                                                    }}>
+                                                                                                    field.onChange(org.id);
+                                                                                                    const o = organizations.find(x => x.id === org.id);
+                                                                                                    // always set (fallback to "") so switching organizations clears
+                                                                                                    // out the previous org's values instead of leaving them behind
+                                                                                                    setValue('email', o?.email || '');
+                                                                                                    setValue('telephone', o?.telephone || '');
+                                                                                                    setValue('sender', o?.address || '');
+                                                                                                    setSelectedSenderLabel(org.name);
+                                                                                                    setOrgPopoverOpen(false);
+                                                                                                    setOrgSearch("");
+                                                                                                }}>
                                                                                                 <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
                                                                                                 {org.name}
                                                                                             </CommandItem>
@@ -633,7 +642,9 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                                                                                 onSelect={() => {
                                                                                                     field.onChange(undefined);
                                                                                                     setValue('sender', user.name);
-                                                                                                    setSelectedSenderLabel(user.name); // NEW — this is what was missing
+                                                                                                    setValue('email', '');       // add — clear stale org email
+                                                                                                    setValue('telephone', '');   // add — clear stale org telephone
+                                                                                                    setSelectedSenderLabel(user.name);
                                                                                                     setOrgPopoverOpen(false);
                                                                                                     setOrgSearch("");
                                                                                                 }}>
@@ -837,7 +848,7 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                     <FormField control={control} name="department_ids" render={() => (
                                         <FormItem>
                                             <div className="flex items-center justify-between">
-                                                <FormLabel>Departments</FormLabel>
+                                                <FormLabel>Sections</FormLabel>
                                                 <Button
                                                     type="button"
                                                     variant="ghost"
@@ -852,13 +863,13 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
 
                                             {selectedDepartmentIds.length > 0 ? (
                                                 <div className="flex flex-wrap gap-1">
-                                                    {selectedDepartmentIds.map(deptId => {
-                                                        const da = departmentAccounts.find(d => d.department_id === deptId);
+                                                    {selectedDepartmentIds.map(accId => {
+                                                        const da = departmentAccounts.find(d => d.id === accId);   // CHANGED
                                                         return da ? (
-                                                            <Badge key={deptId} variant="secondary" className="text-xs gap-1">
-                                                                {da.department_name}
+                                                            <Badge key={accId} variant="secondary" className="text-xs gap-1">
+                                                                {da.department_unit_name || da.department_name}
                                                                 {isEditingDepts && (
-                                                                    <button type="button" onClick={() => toggleDepartment(deptId)} className="ml-0.5 hover:text-destructive">
+                                                                    <button type="button" onClick={() => toggleDepartment(accId)} className="ml-0.5 hover:text-destructive">
                                                                         <X className="h-3 w-3"/>
                                                                     </button>
                                                                 )}
@@ -867,23 +878,23 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                                     })}
                                                 </div>
                                             ) : (
-                                                <p className="text-sm text-muted-foreground">No departments selected</p>
+                                                <p className="text-sm text-muted-foreground">No sections selected</p>
                                             )}
 
                                             {isEditingDepts && (
                                                 <div className="border rounded-md p-3 grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
                                                     {departmentAccounts.length === 0 ? (
-                                                        <p className="text-sm text-muted-foreground col-span-2">No department accounts have been created yet</p>
+                                                        <p className="text-sm text-muted-foreground col-span-2">No section accounts have been created yet</p>
                                                     ) : departmentAccounts.map(da => (
-                                                        <div key={da.department_id} className="flex items-center space-x-2">
+                                                       <div key={da.id} className="flex items-center space-x-2">
                                                             <Checkbox
-                                                                id={`dept-${da.department_id}`}
-                                                                checked={selectedDepartmentIds.includes(da.department_id)}
-                                                                onCheckedChange={() => toggleDepartment(da.department_id)}
+                                                                id={`dept-${da.id}`}
+                                                                checked={selectedDepartmentIds.includes(da.id)}
+                                                                onCheckedChange={() => toggleDepartment(da.id)}
                                                                 disabled={isSubmitting}
                                                             />
-                                                            <label htmlFor={`dept-${da.department_id}`} className="text-sm cursor-pointer">
-                                                                {da.department_name}
+                                                            <label htmlFor={`dept-${da.id}`} className="text-sm cursor-pointer">
+                                                                {da.department_unit_name || da.department_name}
                                                             </label>
                                                         </div>
                                                     ))}
@@ -941,7 +952,7 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                                 onValueChange={(v) => setAssigneeDeptFilter(parseInt(v) || 0)}
                                             >
                                                 <SelectTrigger className="h-8 text-xs">
-                                                    <SelectValue placeholder="Filter by department"/>
+                                                    <SelectValue placeholder="Filter by section"/>
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="0">All sections</SelectItem>

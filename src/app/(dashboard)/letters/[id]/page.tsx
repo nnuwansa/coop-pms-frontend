@@ -1,4 +1,5 @@
 
+
 // 'use client';
 
 // import {useCallback, useEffect, useRef, useState} from "react";
@@ -321,6 +322,12 @@
 //     // person the letter is actually assigned to.
 //     const [selectedRecommendedToId, setSelectedRecommendedToId] = useState<number>(0);
 //     const [originalRecommendedToId, setOriginalRecommendedToId] = useState<number>(0);
+//     // NEW — Department/Sub-Unit filter for the "Recommended To" picker, same
+//     // pattern as the Assignees filter above, so long user lists can be
+//     // narrowed down by department first.
+//     const [recommendedDeptFilter, setRecommendedDeptFilter] = useState<number>(0);
+//     const [recommendedUnitFilter, setRecommendedUnitFilter] = useState<number>(0);
+//     const [recommendedUnits, setRecommendedUnits] = useState<{id: number; name: string}[]>([]);
 //     // NEW — "Send to Recommendation" is now a standalone checkbox, independent
 //     // of whatever status is selected. Previously this was driven by checking
 //     // whether the Status dropdown happened to say "Recommendation", which
@@ -391,10 +398,27 @@
 //             .catch(() => setAssigneeUnits([]));
 //     }, [assigneeDeptFilter]);
 
+//     // NEW — fetch this department's sub-units whenever the "Recommended To"
+//     // dept filter changes, mirroring the assignee filter behaviour above.
+//     useEffect(() => {
+//         setRecommendedUnitFilter(0);
+//         if (!recommendedDeptFilter) { setRecommendedUnits([]); return; }
+//         api.get(`/v1/department/${recommendedDeptFilter}/units`)
+//             .then(r => setRecommendedUnits(r.data.data || []))
+//             .catch(() => setRecommendedUnits([]));
+//     }, [recommendedDeptFilter]);
+
 //     const filteredAssignees = allAssignees.filter(a =>
 //         (!assigneeDeptFilter || a.department_id === assigneeDeptFilter) &&
 //         (!assigneeUnitFilter || a.department_unit_id === assigneeUnitFilter) &&
 //         (!assigneeSearch.trim() || a.name.toLowerCase().includes(assigneeSearch.trim().toLowerCase()))
+//     );
+
+//     // NEW — same department/sub-unit narrowing, applied to the
+//     // "Recommended To" user picker instead of the Assignees picker.
+//     const filteredRecommendedToAssignees = allAssignees.filter(a =>
+//         (!recommendedDeptFilter || a.department_id === recommendedDeptFilter) &&
+//         (!recommendedUnitFilter || a.department_unit_id === recommendedUnitFilter)
 //     );
 
 //     const requestNavigation = (action: () => void) => {
@@ -1005,13 +1029,13 @@
 //                                                                 // never been saved, that meant the checkbox could never be
 //                                                                 // clicked at all. Now it's only locked once a deposit has
 //                                                                 // already been saved and the user isn't actively editing it.
-//                                                                 disabled={!hasPermission('letter.update') || (letter.cheque_deposited && !isEditingCheque)}
+//                                                                 disabled={!hasPermission('letter.cheque_update') || (letter.cheque_deposited && !isEditingCheque)}
 //                                                             />
 //                                                             <label htmlFor="cheque-deposited" className="text-sm font-medium cursor-pointer">
 //                                                                 Cheque Deposited
 //                                                             </label>
 //                                                         </div>
-//                                                         {hasPermission('letter.update') && letter.cheque_deposited && !isEditingCheque && (
+//                                                         {hasPermission('letter.cheque_update') && letter.cheque_deposited && !isEditingCheque && (
 //                                                             <Button
 //                                                                 type="button"
 //                                                                 variant="ghost"
@@ -1055,7 +1079,7 @@
 //                                                     )}
 
 //                                                     {/* Save / Cancel — only while actively editing (first-time entry or Edit clicked) */}
-//                                                     {hasPermission('letter.update') && (isEditingCheque || !letter.cheque_deposited) && (
+//                                                     {hasPermission('letter.cheque_update') && (isEditingCheque || !letter.cheque_deposited) && (
 //                                                         <div className="flex gap-2">
 //                                                             <Button size="sm" onClick={handleSaveCheque} disabled={isSavingCheque}>
 //                                                                 {isSavingCheque ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</> : "Save Cheque Details"}
@@ -1506,7 +1530,7 @@
 //                                                     <SelectValue placeholder="Filter by department"/>
 //                                                 </SelectTrigger>
 //                                                 <SelectContent>
-//                                                     <SelectItem value="0">All departments</SelectItem>
+//                                                     <SelectItem value="0">All sectionss</SelectItem>
 //                                                     {allDepartments.map(d => (
 //                                                         <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
 //                                                     ))}
@@ -1567,7 +1591,7 @@
 //         id="send-to-recommendation"
 //         checked={sendToRecommendation}
 //         onCheckedChange={(checked) => setSendToRecommendation(!!checked)}
-//         disabled={!hasPermission('letter.assign')}
+//         disabled={!hasPermission('letter.recommend')}
 //     />
 //     <label htmlFor="send-to-recommendation" className="text-sm font-medium cursor-pointer">
 //         Send to Recommendation
@@ -1579,19 +1603,77 @@
 //                                     <div className="space-y-2">
 //                                         <p className="text-sm font-medium">Recommended To</p>
 //                                         {sendToRecommendation && hasPermission('letter.assign') ? (
-//                                             <Select
-//                                                 value={selectedRecommendedToId ? selectedRecommendedToId.toString() : ""}
-//                                                 onValueChange={(v) => setSelectedRecommendedToId(parseInt(v) || 0)}
-//                                             >
-//                                                 <SelectTrigger className="w-full">
-//                                                     <SelectValue placeholder="Select who to recommend this to"/>
-//                                                 </SelectTrigger>
-//                                                 <SelectContent>
-//                                                     {allAssignees.map(a => (
-//                                                         <SelectItem key={a.id} value={a.id.toString()}>{a.name}</SelectItem>
-//                                                     ))}
-//                                                 </SelectContent>
-//                                             </Select>
+//                                             <div className="space-y-2">
+//                                                 {/* NEW — Department / Sub-Unit filters, same pattern as
+//                                                     Assignees, so the "who to recommend to" list can be
+//                                                     narrowed down before picking a system user. */}
+//                                                 <div className="grid grid-cols-1 gap-2">
+//                                                     <Select
+//                                                         value={recommendedDeptFilter ? recommendedDeptFilter.toString() : "0"}
+//                                                         onValueChange={(v) => {
+//                                                             const deptId = parseInt(v) || 0;
+//                                                             setRecommendedDeptFilter(deptId);
+//                                                             // Clear a previously selected user if they no longer
+//                                                             // match the newly chosen department filter.
+//                                                             const stillValid = allAssignees.find(a =>
+//                                                                 a.id === selectedRecommendedToId &&
+//                                                                 (!deptId || a.department_id === deptId)
+//                                                             );
+//                                                             if (!stillValid) setSelectedRecommendedToId(0);
+//                                                         }}
+//                                                     >
+//                                                         <SelectTrigger className="h-8 text-xs">
+//                                                             <SelectValue placeholder="Filter by department"/>
+//                                                         </SelectTrigger>
+//                                                         <SelectContent>
+//                                                             <SelectItem value="0">All sections</SelectItem>
+//                                                             {allDepartments.map(d => (
+//                                                                 <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
+//                                                             ))}
+//                                                         </SelectContent>
+//                                                     </Select>
+//                                                     <Select
+//                                                         value={recommendedUnitFilter ? recommendedUnitFilter.toString() : "0"}
+//                                                         onValueChange={(v) => {
+//                                                             const unitId = parseInt(v) || 0;
+//                                                             setRecommendedUnitFilter(unitId);
+//                                                             const stillValid = allAssignees.find(a =>
+//                                                                 a.id === selectedRecommendedToId &&
+//                                                                 (!unitId || a.department_unit_id === unitId)
+//                                                             );
+//                                                             if (!stillValid) setSelectedRecommendedToId(0);
+//                                                         }}
+//                                                         disabled={!recommendedDeptFilter || recommendedUnits.length === 0}
+//                                                     >
+//                                                         <SelectTrigger className="h-8 text-xs">
+//                                                             <SelectValue placeholder={recommendedUnits.length === 0 ? "No sub-units" : "Filter by sub-unit"}/>
+//                                                         </SelectTrigger>
+//                                                         <SelectContent>
+//                                                             <SelectItem value="0">All sub-units</SelectItem>
+//                                                             {recommendedUnits.map(u => (
+//                                                                 <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
+//                                                             ))}
+//                                                         </SelectContent>
+//                                                     </Select>
+//                                                 </div>
+//                                                 <Select
+//                                                     value={selectedRecommendedToId ? selectedRecommendedToId.toString() : ""}
+//                                                     onValueChange={(v) => setSelectedRecommendedToId(parseInt(v) || 0)}
+//                                                 >
+//                                                     <SelectTrigger className="w-full">
+//                                                         <SelectValue placeholder="Select who to recommend this to"/>
+//                                                     </SelectTrigger>
+//                                                     <SelectContent>
+//                                                         {filteredRecommendedToAssignees.length === 0 ? (
+//                                                             <div className="px-2 py-1.5 text-sm text-muted-foreground">
+//                                                                 No system users match this filter
+//                                                             </div>
+//                                                         ) : filteredRecommendedToAssignees.map(a => (
+//                                                             <SelectItem key={a.id} value={a.id.toString()}>{a.name}</SelectItem>
+//                                                         ))}
+//                                                     </SelectContent>
+//                                                 </Select>
+//                                             </div>
 //                                         ) : letter.recommended_to ? (
 //                                             <Badge variant="secondary" className="text-xs">
 //                                                 Recommendation: {letter.recommended_to.name}
@@ -1631,6 +1713,10 @@
 //         </div>
 //     );
 // }
+
+
+
+
 
 'use client';
 
@@ -2661,13 +2747,18 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                                                                 // never been saved, that meant the checkbox could never be
                                                                 // clicked at all. Now it's only locked once a deposit has
                                                                 // already been saved and the user isn't actively editing it.
-                                                                disabled={!hasPermission('letter.update') || (letter.cheque_deposited && !isEditingCheque)}
+                                                                // CHANGED — this now checks the exact same permission code
+                                                                // ('letter.cheque_update') that was created via Manage
+                                                                // Permissions. It previously checked 'letter.update_cheque'
+                                                                // (words swapped), which never matched any real permission
+                                                                // code, so this control was permanently disabled for everyone.
+                                                                disabled={!hasPermission('letter.cheque_update') || (letter.cheque_deposited && !isEditingCheque)}
                                                             />
                                                             <label htmlFor="cheque-deposited" className="text-sm font-medium cursor-pointer">
                                                                 Cheque Deposited
                                                             </label>
                                                         </div>
-                                                        {hasPermission('letter.update') && letter.cheque_deposited && !isEditingCheque && (
+                                                        {hasPermission('letter.cheque_update') && letter.cheque_deposited && !isEditingCheque && (
                                                             <Button
                                                                 type="button"
                                                                 variant="ghost"
@@ -2711,7 +2802,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                                                     )}
 
                                                     {/* Save / Cancel — only while actively editing (first-time entry or Edit clicked) */}
-                                                    {hasPermission('letter.update') && (isEditingCheque || !letter.cheque_deposited) && (
+                                                    {hasPermission('letter.cheque_update') && (isEditingCheque || !letter.cheque_deposited) && (
                                                         <div className="flex gap-2">
                                                             <Button size="sm" onClick={handleSaveCheque} disabled={isSavingCheque}>
                                                                 {isSavingCheque ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</> : "Save Cheque Details"}
@@ -3073,43 +3164,43 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                                     )}
                                 </div>
                                 {selectedDeptIds.length > 0 ? (
-                                    <div className="flex flex-wrap gap-1">
-                                        {selectedDeptIds.map(deptId => {
-                                            const da = departmentAccounts.find(d => d.department_id === deptId);
-                                            return da ? (
-                                                <Badge key={deptId} variant="secondary" className="text-xs gap-1">
-                                                    {da.department_name}
-                                                    {hasPermission('letter.change_department') && isEditingDepts && (
-                                                        <button onClick={() => toggleDept(deptId)} className="ml-0.5 hover:text-destructive">
-                                                            <X className="h-3 w-3"/>
-                                                        </button>
-                                                    )}
-                                                </Badge>
-                                            ) : null;
-                                        })}
-                                    </div>
-                                ) : (
-                                    <p className="text-sm text-muted-foreground">No departments assigned</p>
-                                )}
-                                {isEditingDepts && (
-                                    <div className="border rounded-md p-3 grid grid-cols-1 gap-2 max-h-44 overflow-y-auto">
-                                        {departmentAccounts.length === 0 ? (
-                                            <p className="text-sm text-muted-foreground">No department accounts have been created yet</p>
-                                        ) : departmentAccounts.map(da => (
-                                            <div key={da.department_id} className="flex items-center space-x-2">
-                                                <Checkbox
-                                                    id={`dept-${da.department_id}`}
-                                                    checked={selectedDeptIds.includes(da.department_id)}
-                                                    onCheckedChange={() => toggleDept(da.department_id)}
-                                                    disabled={!hasPermission('letter.change_department')}
-                                                />
-                                                <label htmlFor={`dept-${da.department_id}`} className="text-sm cursor-pointer leading-tight">
-                                                    {da.department_name}
-                                                </label>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+    <div className="flex flex-wrap gap-1">
+        {selectedDeptIds.map(accId => {
+            const da = departmentAccounts.find(d => d.id === accId);   // CHANGED
+            return da ? (
+                <Badge key={accId} variant="secondary" className="text-xs gap-1">
+                    {da.department_unit_name || da.department_name}
+                    {hasPermission('letter.change_department') && isEditingDepts && (
+                        <button onClick={() => toggleDept(accId)} className="ml-0.5 hover:text-destructive">
+                            <X className="h-3 w-3"/>
+                        </button>
+                    )}
+                </Badge>
+            ) : null;
+        })}
+    </div>
+) : (
+    <p className="text-sm text-muted-foreground">No departments assigned</p>
+)}
+{isEditingDepts && (
+    <div className="border rounded-md p-3 grid grid-cols-1 gap-2 max-h-44 overflow-y-auto">
+        {departmentAccounts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No department accounts have been created yet</p>
+        ) : departmentAccounts.map(da => (
+            <div key={da.id} className="flex items-center space-x-2">
+                <Checkbox
+                    id={`dept-${da.id}`}
+                    checked={selectedDeptIds.includes(da.id)}          // CHANGED
+                    onCheckedChange={() => toggleDept(da.id)}          // CHANGED
+                    disabled={!hasPermission('letter.change_department')}
+                />
+                <label htmlFor={`dept-${da.id}`} className="text-sm cursor-pointer leading-tight">
+                    {da.department_unit_name || da.department_name}
+                </label>
+            </div>
+        ))}
+    </div>
+)}
                                                                 
                             </div>
                             <Separator/>
@@ -3223,7 +3314,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
         id="send-to-recommendation"
         checked={sendToRecommendation}
         onCheckedChange={(checked) => setSendToRecommendation(!!checked)}
-        disabled={!hasPermission('letter.assign')}
+        disabled={!hasPermission('letter.recommend')}
     />
     <label htmlFor="send-to-recommendation" className="text-sm font-medium cursor-pointer">
         Send to Recommendation
@@ -3234,7 +3325,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                                     <Separator/>
                                     <div className="space-y-2">
                                         <p className="text-sm font-medium">Recommended To</p>
-                                        {sendToRecommendation && hasPermission('letter.assign') ? (
+                                        {sendToRecommendation && hasPermission('letter.recommend') ? (
                                             <div className="space-y-2">
                                                 {/* NEW — Department / Sub-Unit filters, same pattern as
                                                     Assignees, so the "who to recommend to" list can be
