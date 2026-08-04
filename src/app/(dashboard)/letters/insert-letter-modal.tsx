@@ -101,6 +101,8 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
     const [sourceSearch, setSourceSearch] = useState("");
     const [isAddingOrg, setIsAddingOrg] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const orgListRef = useRef<HTMLDivElement>(null);   
+    const sourceListRef = useRef<HTMLDivElement>(null); 
     const {hasPermission} = useAuthStore();
     const [sources, setSources] = useState<{id: number; name: string; code?: string}[]>([]);
     const [isEditingDepts, setIsEditingDepts] = useState(false);
@@ -511,7 +513,14 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                                     <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                                                         <Command filter={() => 1}>
                                                             <CommandInput placeholder="Search source..." value={sourceSearch} onValueChange={setSourceSearch}/>
-                                                            <CommandList>
+                                                            <CommandList
+                                                                ref={sourceListRef}
+                                                                onWheel={(e) => {
+                                                                    if (sourceListRef.current) {
+                                                                        sourceListRef.current.scrollTop += e.deltaY;
+                                                                    }
+                                                                }}
+                                                            >
                                                                 <CommandEmpty>No source found.</CommandEmpty>
                                                                 <CommandGroup>
                                                                     {field.value && (
@@ -555,10 +564,6 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                                                      
                                         <div className="w-full lg:w-1/2">
                                             <FormField control={control} name="organization" render={({field}) => {
-                                                // A "sender" can be either an Organization (sets `organization` id)
-                                                // or a System User (there's no user-link column on the letter, so
-                                                // picking a user just fills the free-text `sender` field with
-                                                // their name and clears any selected organization id).
                                                 const search = orgSearch.toLowerCase();
                                                 const filteredOrgs = organizations.filter(o => !search || o.name.toLowerCase().includes(search));
                                                 const filteredUsers = assignees.filter(a => !search || a.name.toLowerCase().includes(search));
@@ -595,7 +600,10 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                                                                 behind it (previously only dragging the
                                                                                 scrollbar thumb worked).
                                                                             */}
-                                                                            <CommandList className="max-h-[320px] overflow-y-auto overscroll-contain">
+                                                                            <CommandList ref={orgListRef} className="max-h-[320px] overflow-y-auto overscroll-contain"
+                                                                            onWheel={(e) => {if (orgListRef.current) {orgListRef.current.scrollTop += e.deltaY;}
+                                                                                            }}
+                                                                                            >
                                                                                 <CommandEmpty>No organization or person found.</CommandEmpty>
 
                                                                                 {field.value && (
@@ -642,8 +650,8 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                                                                                 onSelect={() => {
                                                                                                     field.onChange(undefined);
                                                                                                     setValue('sender', user.name);
-                                                                                                    setValue('email', '');       // add — clear stale org email
-                                                                                                    setValue('telephone', '');   // add — clear stale org telephone
+                                                                                                    setValue('email', '');       
+                                                                                                    setValue('telephone', '');   
                                                                                                     setSelectedSenderLabel(user.name);
                                                                                                     setOrgPopoverOpen(false);
                                                                                                     setOrgSearch("");
@@ -731,7 +739,7 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
 
                                     </div>
 
-                                    {/* NEW: Registered Postal Number — shown only when Source = "Registered Post" */}
+                                    {/* Registered Postal Number — shown only when Source = "Registered Post" */}
                                     {isRegisteredPost && (
                                         <FormField control={control} name="registered_post_no" render={({field}) => (
                                             <FormItem>
@@ -821,10 +829,7 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                                     placeholder="Enter subject or content of the letter"
                                                     className="min-h-[160px]"/>
                                             </FormControl>
-                                            {/* NEW — if a Cheque No / Money Order No has been entered, preview it
-                                                appended to the end of the Subject/Content, exactly as it will read
-                                                once combined for reference. This is a display-only preview; the
-                                                Cheque/MO number is still stored separately in the `other` field. */}
+                                            
                                             {otherValue.trim() && (
                                                 <div className="rounded-md border bg-muted/30 p-2.5 text-sm">
                                                     <span className="text-xs font-medium text-muted-foreground block mb-1">
@@ -864,7 +869,7 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                             {selectedDepartmentIds.length > 0 ? (
                                                 <div className="flex flex-wrap gap-1">
                                                     {selectedDepartmentIds.map(accId => {
-                                                        const da = departmentAccounts.find(d => d.id === accId);   // CHANGED
+                                                        const da = departmentAccounts.find(d => d.id === accId);  
                                                         return da ? (
                                                             <Badge key={accId} variant="secondary" className="text-xs gap-1">
                                                                 {da.department_unit_name || da.department_name}

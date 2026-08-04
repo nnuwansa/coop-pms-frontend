@@ -1019,10 +1019,12 @@ const handleNamesChanged = () => {
                                             <TableCell className="max-w-[50px]">
                                                 {(currentPage - 1) * pageSize + index + 1}
                                             </TableCell>}
-                                            {columnVisibility.first_name && <TableCell
-                                                className="truncate max-w-[150px]">{user.first_name}</TableCell>}
+                                            {/* {columnVisibility.first_name && <TableCell
+                                                className="truncate max-w-[150px]">{user.first_name}</TableCell>} */}
                                             {/* {columnVisibility.last_name && <TableCell
                                                 className="truncate max-w-[150px]">{user.last_name}</TableCell>} */}
+                                                {columnVisibility.first_name && <TableCell
+    className="truncate max-w-[150px]">{`${user.first_name} ${user.last_name || ''}`.trim()}</TableCell>}
                                             {columnVisibility.email &&
                                                 <TableCell className="truncate max-w-[150px]">{user.email}</TableCell>}
                                             {columnVisibility.role && <TableCell

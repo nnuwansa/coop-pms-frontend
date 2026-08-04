@@ -118,7 +118,7 @@ export default function RolesPage() {
             </div>
 
             {/* NEW — tab switcher: Roles vs. Permissions (CRUD) */}
-            {/* <div className="flex gap-1 border rounded-lg p-1 bg-muted/30 w-fit">
+            <div className="flex gap-1 border rounded-lg p-1 bg-muted/30 w-fit">
                 <button
                     onClick={() => setActiveTab('roles')}
                     className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
@@ -139,7 +139,7 @@ export default function RolesPage() {
                 >
                     Permissions
                 </button>
-            </div> */}
+            </div>
 
             {activeTab === 'roles' ? (
             <Card>

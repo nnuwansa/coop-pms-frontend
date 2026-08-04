@@ -1,4 +1,3 @@
-
 'use client';
 
 import {useState} from "react";
@@ -48,6 +47,9 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
     // less often in exports/prints than the rest, so starting with them off
     // keeps the default output focused without the user having to
     // manually uncheck them every time.
+    // NEW — cheque_deposited / deposit details columns, so someone can
+    // export/print exactly who has deposited a cheque and the account it
+    // went to, without opening each letter individually.
     const [columns, setColumns] = useState<Column[]>([
         {id: 'id', label: 'ID', checked: true},
         {id: 'code', label: 'Code', checked: true},
@@ -63,6 +65,7 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
         {id: 'status.name', label: 'Status', checked: false},
         {id: 'completion_file_name', label: 'File Name', checked: true},   // NEW
         {id: 'other', label: 'Cheque no /Money Order No ', checked: true},
+        {id: 'cheque_details', label: 'Cheque Details', checked: false},  // CHANGED — combined single column instead of 5 separate ones (deposited/date/account/bank/branch)
         {id: 'attachments', label: 'Attachments Count', checked: false},
         {id: 'received_datetime', label: 'Received Date', checked: true},
         {id: 'create_datetime', label: 'Create Date', checked: false},
@@ -321,6 +324,21 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                                         else if (col.id === 'organization.name') val = letter.organization || '';
                                         else if (col.id === 'department.name') val = letter.department || '';
                                         else if (col.id === 'status.name') val = letter.status || '';
+                                        // CHANGED — combined single "Cheque Details" column instead of
+                                        // separate deposited/date/account/bank/branch columns.
+                                        else if (col.id === 'cheque_details') {
+                                            if (!letter.other) {
+                                                val = '';
+                                            } else if (!letter.cheque_deposited) {
+                                                val = 'Not deposited';
+                                            } else {
+                                                const parts = ['Deposited'];
+                                                if (letter.cheque_deposit_date) parts.push(format(new Date(letter.cheque_deposit_date), 'yyyy-MM-dd'));
+                                                if (letter.cheque_bank) parts.push(letter.cheque_branch ? `${letter.cheque_bank} (${letter.cheque_branch})` : letter.cheque_bank);
+                                                if (letter.cheque_account_no) parts.push(`A/C ${letter.cheque_account_no}`);
+                                                val = parts.join(' · ');
+                                            }
+                                        }
                                         else if (col.id === 'received_datetime' || col.id === 'create_datetime') {
                                             val = letter.create_datetime ? format(new Date(letter.create_datetime), 'yyyy-MM-dd') : '';
                                         }
@@ -423,7 +441,7 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
 
                     <div className="space-y-2">
                         <Label>Select Columns</Label>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 gap-4 max-h-64 overflow-y-auto pr-1">
                             {columns.map((column) => (
                                 <div key={column.id} className="flex items-center space-x-2">
                                     <Checkbox

@@ -66,6 +66,8 @@ interface LetterDetail {
     cheque_account_no?: string | null;
     cheque_bank?: string | null;
     cheque_branch?: string | null;
+    assignee_statuses: AssigneeStatus[];
+    forwarded_to?: {id: number; name: string} | null;
 
 }
 
@@ -109,6 +111,17 @@ interface RemarkHistoryEntry {
     changed_by: string;
     changed_by_email?: string | null;
     create_datetime: string;
+}
+
+interface AssigneeStatus {
+    assignee_id: number;
+    assignee_name: string;
+    status_id: number;
+    status_name: string;
+    file_name?: string | null;
+    status_since?: string | null;
+    status_days?: number | null;
+    can_edit: boolean; // true only for the logged-in user's own row
 }
 
 interface Department {id: number; name: string}
@@ -373,12 +386,28 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
     const [originalAssigneeIds, setOriginalAssigneeIds] = useState<number[]>([]);
     const [originalStatusId, setOriginalStatusId] = useState<number>(0);
 
-    const isDirty =
-        selectedStatusId !== originalStatusId ||
-        !arraysEqual(selectedDeptIds, originalDeptIds) ||
-        !arraysEqual(selectedAssigneeIds, originalAssigneeIds) ||
-        selectedRecommendedToId !== originalRecommendedToId ||   // NEW
-        sendToRecommendation !== originalSendToRecommendation;   // NEW
+
+    const [assigneeStatusEditingId, setAssigneeStatusEditingId] = useState<number | null>(null);
+const [assigneeStatusDraftId, setAssigneeStatusDraftId] = useState<number>(0);
+const [assigneeStatusDraftFileName, setAssigneeStatusDraftFileName] = useState("");
+const [isSavingAssigneeStatus, setIsSavingAssigneeStatus] = useState(false);
+    
+        const [selectedForwardedToId, setSelectedForwardedToId] = useState<number>(0);
+const [originalForwardedToId, setOriginalForwardedToId] = useState<number>(0);
+const [forwardChecked, setForwardChecked] = useState(false);
+const [originalForwardChecked, setOriginalForwardChecked] = useState(false);
+const [forwardDeptFilter, setForwardDeptFilter] = useState<number>(0);
+const [forwardUnitFilter, setForwardUnitFilter] = useState<number>(0);
+const [forwardUnits, setForwardUnits] = useState<{id: number; name: string}[]>([]);
+const [isSavingForward, setIsSavingForward] = useState(false); // only used if you wire a standalone save; omit if using the main Save Changes button
+const isDirty =
+    selectedStatusId !== originalStatusId ||
+    !arraysEqual(selectedDeptIds, originalDeptIds) ||
+    !arraysEqual(selectedAssigneeIds, originalAssigneeIds) ||
+    selectedForwardedToId !== originalForwardedToId ||
+    forwardChecked !== originalForwardChecked ||
+    selectedRecommendedToId !== originalRecommendedToId ||   // NEW
+    sendToRecommendation !== originalSendToRecommendation;   // NEW
 
     const isDirtyRef = useRef(isDirty);
     useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
@@ -411,6 +440,19 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
         (!assigneeUnitFilter || a.department_unit_id === assigneeUnitFilter) &&
         (!assigneeSearch.trim() || a.name.toLowerCase().includes(assigneeSearch.trim().toLowerCase()))
     );
+
+    useEffect(() => {
+    setForwardUnitFilter(0);
+    if (!forwardDeptFilter) { setForwardUnits([]); return; }
+    api.get(`/v1/department/${forwardDeptFilter}/units`)
+        .then(r => setForwardUnits(r.data.data || []))
+        .catch(() => setForwardUnits([]));
+}, [forwardDeptFilter]);
+ 
+const filteredForwardAssignees = allAssignees.filter(a =>
+    (!forwardDeptFilter || a.department_id === forwardDeptFilter) &&
+    (!forwardUnitFilter || a.department_unit_id === forwardUnitFilter)
+);
 
     // NEW — same department/sub-unit narrowing, applied to the
     // "Recommended To" user picker instead of the Assignees picker.
@@ -475,6 +517,10 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
             setOriginalRecommendedToId(data.recommended_to?.id || 0);   // NEW
             setSendToRecommendation(!!data.recommended_to);   // NEW
             setOriginalSendToRecommendation(!!data.recommended_to);   // NEW
+            setSelectedForwardedToId(data.forwarded_to?.id || 0);
+  setOriginalForwardedToId(data.forwarded_to?.id || 0);
+   setForwardChecked(!!data.forwarded_to);
+   setOriginalForwardChecked(!!data.forwarded_to);
 
             if (deptRes.data.success) setAllDepartments(deptRes.data.data);
             if (statusRes.data.success) setAllStatuses(statusRes.data.data);
@@ -536,6 +582,47 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
             setHistoryLoading(false);
         }
     }, [id]);
+
+    const openEditAssigneeStatus = (row: AssigneeStatus) => {
+    if (!row.can_edit) return; // guard — never allow editing someone else's row, even via console/devtools
+    setAssigneeStatusEditingId(row.assignee_id);
+    setAssigneeStatusDraftId(row.status_id);
+    setAssigneeStatusDraftFileName(row.file_name || "");
+};
+ 
+const cancelEditAssigneeStatus = () => {
+    setAssigneeStatusEditingId(null);
+    setAssigneeStatusDraftId(0);
+    setAssigneeStatusDraftFileName("");
+};
+ 
+const draftAssigneeStatusObj = allStatuses.find(s => s.id === assigneeStatusDraftId);
+const assigneeStatusFileNameRequired = !!draftAssigneeStatusObj?.requires_file_name;
+ 
+const handleSaveAssigneeStatus = async () => {
+    if (assigneeStatusFileNameRequired && !assigneeStatusDraftFileName.trim()) {
+        toast.error(`File Name is required when setting status to "${draftAssigneeStatusObj?.name}"`);
+        return;
+    }
+    try {
+        setIsSavingAssigneeStatus(true);
+        // NOTE: no assignee_id is sent in the body — the backend always
+        // writes to current_user.id, so this can never touch another
+        // assignee's row even if the payload were tampered with.
+        await api.put(`/v1/letter/${id}/assignee-status`, {
+            status_id: assigneeStatusDraftId,
+            file_name: assigneeStatusFileNameRequired ? assigneeStatusDraftFileName.trim() : null,
+        });
+        toast.success("Your status has been updated");
+        cancelEditAssigneeStatus();
+        fetchLetter();
+    } catch (error) {
+        toast.error(error.response?.data?.message || "Failed to update your status");
+    } finally {
+        setIsSavingAssigneeStatus(false);
+    }
+};
+ 
 
     // ── Fetch remark edit/delete log — NEW ──────────────────────────────────
 
@@ -608,6 +695,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
             assignee_ids: selectedAssigneeIds,
             file_name: isFileNameRequiredNow ? completionFileName.trim() : undefined,   // CHANGED
             recommended_to_id: sendToRecommendation ? selectedRecommendedToId : null,   // CHANGED — explicit null clears it when unchecked
+            forwarded_to_id: forwardChecked ? selectedForwardedToId : null,
         });
         toast.success("Letter updated successfully");
         setOriginalStatusId(selectedStatusId);
@@ -637,6 +725,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                 assignee_ids: selectedAssigneeIds,
                 file_name: isFileNameRequiredNow ? completionFileName.trim() : undefined,   // NEW
                 recommended_to_id: sendToRecommendation ? selectedRecommendedToId : null,   // CHANGED
+                forwarded_to_id: forwardChecked ? selectedForwardedToId : null,
             });
             toast.success("Letter updated successfully");
 
@@ -645,7 +734,8 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
             setOriginalAssigneeIds(selectedAssigneeIds);
             setOriginalRecommendedToId(selectedRecommendedToId);   // NEW
             setOriginalSendToRecommendation(sendToRecommendation);   // NEW
-
+            setOriginalForwardedToId(selectedForwardedToId);   // NEW
+            setOriginalForwardChecked(forwardChecked);   // NEW
             setShowUnsavedDialog(false);
             const action = pendingActionRef.current;
             pendingActionRef.current = null;
@@ -1370,7 +1460,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                     <Card>
                         <CardContent className="pt-6 space-y-5">
                             {/* Status */}
-<div className="space-y-2">
+{/* <div className="space-y-2">
     <p className="text-sm font-medium">Status</p>
     <Select
     value={selectedStatusId ? selectedStatusId.toString() : ""}
@@ -1416,8 +1506,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                     {letter.status_days} day{letter.status_days !== 1 ? 's' : ''} in this status
                 </p>
             )}
-            {/* NEW — surface the file name that was recorded for this status,
-                so anyone viewing the letter can see it without opening edit mode */}
+            
             {letter.completion_file_name && (
                 <p className="text-xs text-muted-foreground">
                     File Name: <span className="font-medium text-foreground">{letter.completion_file_name}</span>
@@ -1425,7 +1514,7 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
             )}
 </div>
 
-                            <Separator/>
+                            <Separator/> */}
 
                             {/* Departments */}
                             <div className="space-y-2">
@@ -1582,6 +1671,210 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
                                     </div>
                                 )}
                             </div>
+
+
+                            {letter.assignee_statuses && letter.assignee_statuses.length > 0 && (
+    <>
+        <Separator/>
+        <div className="space-y-2">
+            <p className="text-sm font-medium">Assignee Statuses</p>
+            <p className="text-xs text-muted-foreground -mt-1">
+                Each assignee tracks their own progress. You can only change your own status.
+            </p>
+            <div className="space-y-2">
+                {letter.assignee_statuses.map((row) => {
+                    const isEditingThisRow = assigneeStatusEditingId === row.assignee_id;
+                    return (
+                        <div key={row.assignee_id} className="border rounded-md p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-medium">{row.assignee_name}</span>
+                                {row.can_edit && !isEditingThisRow && (
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 px-2 text-xs"
+                                        onClick={() => openEditAssigneeStatus(row)}
+                                    >
+                                        <Pencil className="mr-1 h-3 w-3"/>Update
+                                    </Button>
+                                )}
+                            </div>
+ 
+                            {isEditingThisRow ? (
+                                <div className="space-y-2">
+                                    <Select
+                                        value={assigneeStatusDraftId ? assigneeStatusDraftId.toString() : ""}
+                                        onValueChange={(v) => setAssigneeStatusDraftId(parseInt(v) || 0)}
+                                    >
+                                        <SelectTrigger className="h-8 text-xs">
+                                            <SelectValue placeholder="Select Status"/>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {allStatuses
+                                                .filter(s =>
+                                                    !allowedStatusIds?.length ||
+                                                    allowedStatusIds.includes(s.id) ||
+                                                    s.id === row.status_id
+                                                )
+                                                .map(s => (
+                                                    <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+ 
+                                    {assigneeStatusFileNameRequired && (
+                                        <input
+                                            type="text"
+                                            value={assigneeStatusDraftFileName}
+                                            onChange={(e) => setAssigneeStatusDraftFileName(e.target.value)}
+                                            placeholder={`File name for "${draftAssigneeStatusObj?.name}"`}
+                                            className="w-full rounded-md border px-2 h-8 text-xs"
+                                        />
+                                    )}
+ 
+                                    <div className="flex gap-2">
+                                        <Button
+                                            size="sm"
+                                            className="h-7 px-2 text-xs"
+                                            onClick={handleSaveAssigneeStatus}
+                                            disabled={isSavingAssigneeStatus}
+                                        >
+                                            {isSavingAssigneeStatus ? (
+                                                <><Loader2 className="mr-1 h-3 w-3 animate-spin"/>Saving...</>
+                                            ) : "Save"}
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 px-2 text-xs"
+                                            onClick={cancelEditAssigneeStatus}
+                                            disabled={isSavingAssigneeStatus}
+                                        >
+                                            Cancel
+                                        </Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-0.5">
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusClassName(row.status_name)}`}>
+                                        {row.status_name}
+                                    </span>
+                                    {row.file_name && (
+                                        <p className="text-xs text-muted-foreground">
+                                            File Name: <span className="font-medium text-foreground">{row.file_name}</span>
+                                        </p>
+                                    )}
+                                    {typeof row.status_days === 'number' && (
+                                        <p className="text-xs text-muted-foreground">
+                                            {row.status_days} day{row.status_days !== 1 ? 's' : ''} in this status
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    </>
+)}
+                            {/* NEW — Forwarded Section */}
+                                    {/* <Separator/>
+                                    <div className="flex items-center space-x-2">
+                                        <Checkbox
+                                            id="forward-letter"
+                                            checked={forwardChecked}
+                                            onCheckedChange={(checked) => {
+                                                setForwardChecked(!!checked);
+                                                if (!checked) setSelectedForwardedToId(0); // clear the pick when unchecked
+                                            }}
+                                            disabled={!hasPermission('letter.forward')}
+                                        />
+                                        <label htmlFor="forward-letter" className="text-sm font-medium cursor-pointer">
+                                            Forwarded
+                                        </label>
+                                    </div>
+                                    
+                                    {(forwardChecked || letter.forwarded_to) && (
+                                        <div className="space-y-2">
+                                            <p className="text-sm font-medium">Forwarded To</p>
+                                            {forwardChecked && hasPermission('letter.forward') ? (
+                                                <div className="space-y-2">
+                                                    <div className="grid grid-cols-1 gap-2">
+                                                        <Select
+                                                            value={forwardDeptFilter ? forwardDeptFilter.toString() : "0"}
+                                                            onValueChange={(v) => {
+                                                                const deptId = parseInt(v) || 0;
+                                                                setForwardDeptFilter(deptId);
+                                                                const stillValid = allAssignees.find(a =>
+                                                                    a.id === selectedForwardedToId &&
+                                                                    (!deptId || a.department_id === deptId)
+                                                                );
+                                                                if (!stillValid) setSelectedForwardedToId(0);
+                                                            }}
+                                                        >
+                                                            <SelectTrigger className="h-8 text-xs">
+                                                                <SelectValue placeholder="Filter by department"/>
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="0">All sections</SelectItem>
+                                                                {allDepartments.map(d => (
+                                                                    <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                        <Select
+                                                            value={forwardUnitFilter ? forwardUnitFilter.toString() : "0"}
+                                                            onValueChange={(v) => {
+                                                                const unitId = parseInt(v) || 0;
+                                                                setForwardUnitFilter(unitId);
+                                                                const stillValid = allAssignees.find(a =>
+                                                                    a.id === selectedForwardedToId &&
+                                                                    (!unitId || a.department_unit_id === unitId)
+                                                                );
+                                                                if (!stillValid) setSelectedForwardedToId(0);
+                                                            }}
+                                                            disabled={!forwardDeptFilter || forwardUnits.length === 0}
+                                                        >
+                                                            <SelectTrigger className="h-8 text-xs">
+                                                                <SelectValue placeholder={forwardUnits.length === 0 ? "No sub-units" : "Filter by sub-unit"}/>
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="0">All sub-units</SelectItem>
+                                                                {forwardUnits.map(u => (
+                                                                    <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <Select
+                                                        value={selectedForwardedToId ? selectedForwardedToId.toString() : ""}
+                                                        onValueChange={(v) => setSelectedForwardedToId(parseInt(v) || 0)}
+                                                    >
+                                                        <SelectTrigger className="w-full">
+                                                            <SelectValue placeholder="Select who to forward this to"/>
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {filteredForwardAssignees.length === 0 ? (
+                                                                <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                                                                    No system users match this filter
+                                                                </div>
+                                                            ) : filteredForwardAssignees.map(a => (
+                                                                <SelectItem key={a.id} value={a.id.toString()}>{a.name}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            ) : letter.forwarded_to ? (
+                                                <Badge variant="secondary" className="text-xs">
+                                                    Forwarded to: {letter.forwarded_to.name}
+                                                </Badge>
+                                            ) : (
+                                                <p className="text-sm text-muted-foreground">Not yet selected</p>
+                                            )}
+                                        </div>
+                                    )} */}
 
                             {/* NEW — Recommended To: entirely separate from Assignees, so
                                 choosing who to recommend the letter to never removes or
