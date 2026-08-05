@@ -325,11 +325,36 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
         setValue('department_ids', updated);
     };
 
+    // const toggleAssignee = (id: number) => {
+    //     const current = selectedAssigneeIds;
+    //     const updated = current.includes(id) ? current.filter(a => a !== id) : [...current, id];
+    //     setValue('assignee_ids', updated);
+    // };
+
     const toggleAssignee = (id: number) => {
-        const current = selectedAssigneeIds;
-        const updated = current.includes(id) ? current.filter(a => a !== id) : [...current, id];
-        setValue('assignee_ids', updated);
-    };
+    const current = selectedAssigneeIds;
+    const isAdding = !current.includes(id);
+    const updated = isAdding ? [...current, id] : current.filter(a => a !== id);
+    setValue('assignee_ids', updated);
+ 
+    // NEW — if this is an ADD (not a removal) and no section has been
+    // picked yet, auto-select the section that matches this assignee's own
+    // department (and sub-unit, if they belong to one). Only fires when
+    // department_ids is still empty, so it never overrides a department
+    // the admin already deliberately chose.
+    if (isAdding && selectedDepartmentIds.length === 0) {
+        const assignee = assignees.find(a => a.id === id);
+        if (assignee && assignee.department_id) {
+            const matchingAccount = departmentAccounts.find(da =>
+                da.department_id === assignee.department_id &&
+                (da.department_unit_id ?? null) === (assignee.department_unit_id ?? null)
+            );
+            if (matchingAccount) {
+                setValue('department_ids', [matchingAccount.id]);
+            }
+        }
+    }
+};
 
     async function onSubmit(data: RemarkFormValues) {
         setIsSubmitting(true);

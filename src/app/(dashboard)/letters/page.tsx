@@ -109,6 +109,7 @@ interface Letter {
     cheque_bank?: string | null;           // NEW
     cheque_branch?: string | null;         // NEW
     completion_file_name?: string | null;  // NEW
+    remarks_count?: number;  // NEW — used for the notify badge in Actions column
 }
 
 interface LetterFilters {
@@ -117,13 +118,16 @@ interface LetterFilters {
     subject: string;
     department_id: number;
     assignee_id: number;
-    status_id: number;
+    status_id: number;   // still used by the stat-card clicks (overall letter status), unrelated to the assignee-status dropdown below
+    assignee_status_id: number;   // CHANGED — new: replaces the manual "Select a Status" dropdown filter — filters by an individual assignee's own status instead of the letter's overall status
     organization_id: number;
     create_date_start: string | null;
     create_date_end: string | null;
     other: string;
     has_cheque: boolean;     // NEW
     pending_only: boolean;   // NEW
+    pending_days_min: number | null;   // NEW — e.g. 1 for "1-5 days"
+    pending_days_max: number | null;   // NEW — e.g. 5 for "1-5 days"; null = no upper bound ("30+ days")
 }
 
 interface ColumnVisibility {
@@ -169,12 +173,15 @@ const initialFilters: LetterFilters = {
     department_id: 0,
     assignee_id: 0,
     status_id: 0,
+    assignee_status_id: 0,   // NEW
     organization_id: 0,
     create_date_start: null,
     create_date_end: null,
     other: "",
     has_cheque: false,    // NEW
     pending_only: false,  // NEW
+    pending_days_min: null,   // NEW
+    pending_days_max: null,   // NEW
 };
 
 // CHANGED — department & assignee columns are now visible by default so the
@@ -567,11 +574,15 @@ useEffect(() => {
             department_id: debouncedFilters.department_id || 0,
             assignee_id: debouncedFilters.assignee_id || 0,
             status_id: debouncedFilters.status_id || 0,
+            assignee_status_id: debouncedFilters.assignee_status_id || 0,   // NEW
             create_date_start: debouncedFilters.create_date_start || null,
             create_date_end: debouncedFilters.create_date_end || null,
             other: debouncedFilters.other || "",
             has_cheque: debouncedFilters.has_cheque || false,     // NEW
             pending_only: debouncedFilters.pending_only || false, // NEW
+            pending_days_min: debouncedFilters.pending_days_min ?? null,   // NEW
+            pending_days_max: debouncedFilters.pending_days_max ?? null,   // NEW
+            
         };
 
         try {
@@ -1065,19 +1076,19 @@ useEffect(() => {
                                             />
                                         </div>
                                     )}
-                                    {/* CHANGED — no longer gated by columnVisibility.status since
-                                        that column was removed from the table (replaced by
-                                        per-assignee status next to Assignee). The filter itself
-                                        is still useful, so it's now always shown. */}
+                                    {/* CHANGED — this now filters by an individual ASSIGNEE'S
+                                        status instead of the letter's overall status, matching
+                                        the dashboard's move to per-assignee statuses everywhere
+                                        else (Assignee Status column, days-pending badge, etc). */}
                                     <div className="relative">
                                         <Select
-                                            value={inputFilters.status_id !== 0 ? inputFilters.status_id.toString() : ""}
+                                            value={inputFilters.assignee_status_id !== 0 ? inputFilters.assignee_status_id.toString() : ""}
                                             onValueChange={(value) => setInputFilters((prev) => ({
                                                 ...prev,
-                                                status_id: parseInt(value) || 0,
+                                                assignee_status_id: parseInt(value) || 0,
                                             }))}>
                                             <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select a Status"/>
+                                                <SelectValue placeholder="Filter by assignee status"/>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {statuses.map((s) => (
@@ -1085,10 +1096,10 @@ useEffect(() => {
                                                 ))}
                                             </SelectContent>
                                         </Select>
-                                        {inputFilters.status_id !== 0 && (
+                                        {inputFilters.assignee_status_id !== 0 && (
                                             <Button variant="ghost" size="icon"
                                                 className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                onClick={() => clearFilter('status_id')}>
+                                                onClick={() => clearFilter('assignee_status_id')}>
                                                 <X className="h-4 w-4"/>
                                             </Button>
                                         )}
@@ -1124,18 +1135,54 @@ useEffect(() => {
                                             Has Cheque / Money Order
                                         </label>
                                     </div>
-                                    {/* NEW — Pending Only filter (excludes Completed letters) */}
-                                    <div className="flex items-center space-x-2 border rounded-md px-3 h-10">
-                                        <Checkbox
-                                            id="filter-pending-only"
-                                            checked={inputFilters.pending_only}
-                                            onCheckedChange={(checked) =>
-                                                setInputFilters(prev => ({...prev, pending_only: !!checked}))
+                                    {/* CHANGED — was a plain "Pending Only" checkbox. Now a
+                                        dropdown of day ranges, so someone can find e.g. only
+                                        letters that have been pending 1-5 days, not just "any
+                                        pending letter" with no way to narrow by how overdue it is. */}
+                                    <div className="relative">
+                                        <Select
+                                            value={
+                                                !inputFilters.pending_only ? "none" :
+                                                inputFilters.pending_days_min == null && inputFilters.pending_days_max == null ? "any" :
+                                                inputFilters.pending_days_min === 1 && inputFilters.pending_days_max === 5 ? "1-5" :
+                                                inputFilters.pending_days_min === 6 && inputFilters.pending_days_max === 10 ? "6-10" :
+                                                inputFilters.pending_days_min === 11 && inputFilters.pending_days_max === 20 ? "11-20" :
+                                                inputFilters.pending_days_min === 21 && inputFilters.pending_days_max === 30 ? "21-30" :
+                                                inputFilters.pending_days_min === 31 && inputFilters.pending_days_max == null ? "30+" :
+                                                "any"
                                             }
-                                        />
-                                        <label htmlFor="filter-pending-only" className="text-sm cursor-pointer whitespace-nowrap">
-                                            Pending Only (not Completed)
-                                        </label>
+                                            onValueChange={(value) => {
+                                                const ranges: Record<string, [number | null, number | null] | null> = {
+                                                    none: null,
+                                                    any: [null, null],
+                                                    "1-5": [1, 5],
+                                                    "6-10": [6, 10],
+                                                    "11-20": [11, 20],
+                                                    "21-30": [21, 30],
+                                                    "30+": [31, null],
+                                                };
+                                                const picked = ranges[value];
+                                                setInputFilters(prev => ({
+                                                    ...prev,
+                                                    pending_only: value !== "none",
+                                                    pending_days_min: picked ? picked[0] : null,
+                                                    pending_days_max: picked ? picked[1] : null,
+                                                }));
+                                            }}
+                                        >
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Pending days"/>
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">All letters</SelectItem>
+                                                <SelectItem value="any">Pending (any days)</SelectItem>
+                                                <SelectItem value="1-5">Pending 1-5 days</SelectItem>
+                                                <SelectItem value="6-10">Pending 6-10 days</SelectItem>
+                                                <SelectItem value="11-20">Pending 11-20 days</SelectItem>
+                                                <SelectItem value="21-30">Pending 21-30 days</SelectItem>
+                                                <SelectItem value="30+">Pending 30+ days</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 </div>
                             )}
@@ -1377,15 +1424,30 @@ useEffect(() => {
                                                     {/* Actions cell */}
                                                     <TableCell className="text-center w-[8%] align-top">
                                                         <div className="flex items-center justify-center gap-1">
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                                                onClick={() => router.push(`/letters/${item.id}`)}
-                                                                aria-label={`View letter ${item.code}`}
-                                                            >
-                                                                <Eye className="h-4 w-4"/>
-                                                            </Button>
+                                                            {/* NEW — View button now carries a small remarks-count
+                                                                notify badge (only shown when count > 0), so people
+                                                                can tell at a glance which letters have discussion
+                                                                without opening each one. Subtle pulse draws the eye
+                                                                without being obnoxious across a whole page of rows. */}
+                                                            <div className="relative">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                                                    onClick={() => router.push(`/letters/${item.id}`)}
+                                                                    aria-label={`View letter ${item.code}`}
+                                                                >
+                                                                    <Eye className="h-4 w-4"/>
+                                                                </Button>
+                                                                {!!item.remarks_count && item.remarks_count > 0 && (
+                                                                    <span
+                                                                        className="absolute -top-1 -right-1 flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-blue-600 text-white text-[10px] font-semibold leading-none animate-pulse"
+                                                                        title={`${item.remarks_count} remark${item.remarks_count !== 1 ? 's' : ''}`}
+                                                                    >
+                                                                        {item.remarks_count}
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                             {/* NEW — quick-edit shortcut: change department/assignee/
                                                                 organization/subject right from the table, without
                                                                 opening the full letter view */}

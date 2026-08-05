@@ -68,6 +68,7 @@ interface LetterDetail {
     cheque_branch?: string | null;
     assignee_statuses: AssigneeStatus[];
     forwarded_to?: {id: number; name: string} | null;
+    remarks_count?: number;   // NEW — total active remark count, for the tab badge
 
 }
 
@@ -1246,14 +1247,23 @@ const handleSaveAssigneeStatus = async () => {
                                 <div className="flex gap-1 border rounded-lg p-1 bg-muted/30">
                                     <button
                                         onClick={() => setActiveTab('remarks')}
-                                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                                        className={`relative px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                                             activeTab === 'remarks'
                                                 ? 'bg-background shadow-sm text-foreground'
                                                 : 'text-muted-foreground hover:text-foreground'
                                         }`}
                                     >
                                         Remarks
+                                        {!!letter.remarks_count && letter.remarks_count > 0 && (
+                                            <span
+                                                className="absolute -top-1.5 -right-1.5 flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-blue-600 text-white text-[10px] font-semibold leading-none animate-pulse"
+                                                title={`${letter.remarks_count} remark${letter.remarks_count !== 1 ? 's' : ''}`}
+                                            >
+                                                {letter.remarks_count}
+                                            </span>
+                                        )}
                                     </button>
+                                    
                                     <button
                                         onClick={() => setActiveTab('history')}
                                         className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
@@ -1277,7 +1287,11 @@ const handleSaveAssigneeStatus = async () => {
                                     </button>
                                 </div>
                                 {activeTab === 'remarks' && (
-                                    <InsertRemarkModal letter_id={id} onSuccess={fetchRemarks}/>
+                                    <InsertRemarkModal
+                                        letter_id={id}
+                                        onSuccess={() => { fetchRemarks(); fetchLetter(); }}  
+                                    />
+ 
                                 )}
                             </div>
                         </CardHeader>
@@ -2005,6 +2019,7 @@ const handleSaveAssigneeStatus = async () => {
                     letterData={letter}
                     onSuccess={fetchLetter}
                 />
+                
             )}
         </div>
     );

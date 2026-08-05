@@ -191,24 +191,6 @@ const toggleAssignableRole = (id: number) => {
     setSelectedAssignableRoleIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 };
 
-// Update the load effect to also fetch statuses
-useEffect(() => {
-    if (isOpen && selectedRole) {
-        const loadData = async () => {
-            try {
-                const loadedPermissions = await fetchPermissions();
-                await fetchStatuses();   // NEW
-                if (loadedPermissions.length > 0) {
-                    await fetchRolePermissions(selectedRole.id, loadedPermissions);
-                }
-            } catch (error) {
-                console.error("Error in permission loading sequence:", error);
-            }
-        };
-        loadData().catch((error) => console.error("Error loading permissions:", error));
-    }
-}, [isOpen, selectedRole, fetchPermissions, fetchRolePermissions, fetchStatuses]);
-
 // New toggle handler
 const toggleStatus = (statusId: number) => {
     setSelectedStatusIds(prev =>

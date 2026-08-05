@@ -67,7 +67,7 @@ const [departmentUnits, setDepartmentUnits] = useState<{id: number; name: string
     const form = useForm({
         resolver: zodResolver(formSchema),
         defaultValues: {
-            firstName: userData?.first_name || "",
+            firstName: `${userData?.first_name || ""} ${userData?.last_name || ""}`.trim(),
             lastName: userData?.last_name || "",
             email: userData?.email || "",
             employeeId: userData?.employee_id || "",
@@ -88,7 +88,7 @@ const selectedDepartmentId = form.watch('department');
     useEffect(() => {
         if (userData) {
             form.reset({
-                firstName: userData.first_name || "",
+                firstName: `${userData.first_name || ""} ${userData.last_name || ""}`.trim(),
                 lastName: userData.last_name || "",
                 email: userData.email || "",
                 employeeId: userData.employee_id || "",
@@ -119,8 +119,8 @@ const selectedDepartmentId = form.watch('department');
             setIsSubmitting(true);
             const payload: UpdateUserPayload = {
                 email: data.email,
-                first_name: data.firstName,
-                last_name: data.lastName || "", 
+                first_name: userData.first_name,   
+    last_name: userData.last_name || "",  
                 employee_id: data.employeeId || null,
                 nic: data.nic || null,
                 designation_id: data.designation ? parseInt(data.designation) : null,
@@ -156,7 +156,7 @@ const selectedDepartmentId = form.watch('department');
                                 <FormItem>
                                     <FormLabel>Full Name</FormLabel>
                                     <FormControl>
-                                        <Input {...field} placeholder="Enter first name" disabled={isSubmitting}/>
+                                        <Input {...field} placeholder="Enter first name" disabled/>
                                     </FormControl>
                                     <FormMessage/>
                                 </FormItem>

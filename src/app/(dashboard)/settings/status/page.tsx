@@ -163,17 +163,13 @@ export default function StatusPage() {
                                                                     </Button>
                                                                 </DropdownMenuTrigger>
                                                                 <DropdownMenuContent align="end">
-                                                                    <DropdownMenuItem
-                                                                        onClick={() => handleUpdate(status)}
-                                                                        disabled={index <= 3}
-                                                                    >
+                                                                    <DropdownMenuItem onClick={() => handleUpdate(status)}>
                                                                         <Pencil className="mr-2 h-4 w-4"/>
                                                                         Update
                                                                     </DropdownMenuItem>
                                                                     <DropdownMenuItem
                                                                         onClick={() => handleDeleteAlert(status.id)}
                                                                         className="text-red-600 focus:text-red-600"
-                                                                        disabled={index <= 3}
                                                                     >
                                                                         <Trash2 className="mr-2 h-4 w-4"/>
                                                                         Delete

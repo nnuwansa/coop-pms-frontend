@@ -32,6 +32,7 @@ type FormValues = z.infer<typeof formSchema>;
 interface Status {
     id: string;
     name: string;
+    requires_file_name?: boolean; 
 }
 
 interface UpdateDialogProps {
@@ -54,6 +55,7 @@ export function UpdateDialog({
         resolver: zodResolver(formSchema),
         defaultValues: {
             name: initialData?.name || "",
+            requiresFileName: initialData?.requires_file_name || false,
         },
     });
 
@@ -62,6 +64,7 @@ export function UpdateDialog({
         if (initialData) {
             form.reset({
                 name: initialData.name,
+                requiresFileName: initialData.requires_file_name || false, 
             });
         }
     }, [form, initialData]);
