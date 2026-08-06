@@ -582,7 +582,7 @@ useEffect(() => {
             pending_only: debouncedFilters.pending_only || false, // NEW
             pending_days_min: debouncedFilters.pending_days_min ?? null,   // NEW
             pending_days_max: debouncedFilters.pending_days_max ?? null,   // NEW
-            
+            pending_only: debouncedFilters.pending_only || false, // NEW
         };
 
         try {
@@ -1220,7 +1220,7 @@ useEffect(() => {
                                                 />
                                             </TableHead>
                                             {columnVisibility.id && <TableHead className="w-[3%] text-center">ID</TableHead>}
-                                            {columnVisibility.code && <TableHead className="w-[7%]">Code</TableHead>}
+                                            {columnVisibility.code && <TableHead className="w-[9%]">Code</TableHead>}
                                             {columnVisibility.organization && <TableHead className="w-[10%]">Sender/Organization of the letter</TableHead>}
                                             {/* CHANGED — width reduced from an unbounded min-w so the column
                                                 no longer forces horizontal scroll; content wraps and grows the
@@ -1283,8 +1283,8 @@ useEffect(() => {
                                                         </TableCell>
                                                     )}
                                                     {columnVisibility.code && (
-                                                        <TableCell className="w-[7%] align-top">
-                                                            <div className="break-words">{item.code}</div>
+                                                        <TableCell className="w-[9%] align-top">
+                                                            <div className="whitespace-nowrap">{item.code}</div>
                                                         </TableCell>
                                                     )}
                                                     {columnVisibility.organization && (
