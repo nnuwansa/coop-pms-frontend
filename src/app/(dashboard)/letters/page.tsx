@@ -582,7 +582,7 @@ useEffect(() => {
             pending_only: debouncedFilters.pending_only || false, // NEW
             pending_days_min: debouncedFilters.pending_days_min ?? null,   // NEW
             pending_days_max: debouncedFilters.pending_days_max ?? null,   // NEW
-            pending_only: debouncedFilters.pending_only || false, // NEW
+            
         };
 
         try {
