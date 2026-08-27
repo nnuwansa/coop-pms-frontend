@@ -53,6 +53,7 @@ const remarkFormSchema = z.object({
     other: z.string().max(500).optional(),
     sender_subject_no: z.string().max(50, "Sender's Subject No cannot exceed 50 characters").optional(),
     // NEW: Registered Postal Number field
+    is_public_complaint: z.boolean().default(false),
     registered_post_no: z.string().max(50, "Registered Postal Number cannot exceed 50 characters").optional(),
     assignee_ids: z.array(z.number()).optional().default([]),
     department_ids: z.array(z.number()).optional().default([]),
@@ -96,6 +97,8 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
     const [newOrgAddress, setNewOrgAddress] = useState("");
     const [newOrgEmail, setNewOrgEmail] = useState("");
     const [newOrgTelephone, setNewOrgTelephone] = useState("");
+    const [newOrgFax, setNewOrgFax] = useState(""); 
+    const [isSubmittingOrg, setIsSubmittingOrg] = useState(false); 
     const [isLoading, setIsLoading] = useState(false);
     const [orgSearch, setOrgSearch] = useState("");
     const [sourceSearch, setSourceSearch] = useState("");
@@ -105,6 +108,8 @@ export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded
     const sourceListRef = useRef<HTMLDivElement>(null); 
     const {hasPermission} = useAuthStore();
     const [sources, setSources] = useState<{id: number; name: string; code?: string}[]>([]);
+    const [initialsByCandidates, setInitialsByCandidates] = useState<{id: number; name: string; is_default: boolean}[]>([]);
+   const [selectedInitialsByUserId, setSelectedInitialsByUserId] = useState<number>(0);
     const [isEditingDepts, setIsEditingDepts] = useState(false);
     const [isEditingAssignees, setIsEditingAssignees] = useState(false);
     const [sourcePopoverOpen, setSourcePopoverOpen] = useState(false);
@@ -198,6 +203,7 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
             other: "",
             sender_subject_no: "",
             registered_post_no: "",
+            is_public_complaint: false,  
             assignee_ids: [],
             department_ids: [],
             attachments: [],
@@ -228,16 +234,24 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
         if (isOpen && !isLoading) {
             const fetchData = async () => {
                 try {
-                    const [sourcesRes, deptRes, assigneeRes, deptAccountsRes] = await Promise.all([
+                     const [sourcesRes, deptRes, assigneeRes, deptAccountsRes, initialsByRes] = await Promise.all([
                         api.get('/v1/source/list'),
                         api.get('/v1/department/list'),
                         api.get('/v1/system_user/names'),
                         api.get('/v1/system_user/department-accounts'), 
+                        api.get('/v1/system_user/by-permission/letter.initials_by'),
                     ]);
                     setSources(sourcesRes.data.data || []);
                     setDepartments(deptRes.data.data || []);
                     setAssignees(assigneeRes.data.data || []);
                     setDepartmentAccounts(deptAccountsRes.data.data || []); 
+                    const candidates = initialsByRes.data.success ? initialsByRes.data.data : [];
+                   setInitialsByCandidates(candidates);
+                   // NEW — pre-select the default candidate as a convenience,
+                   // but this is JUST a pre-fill; nothing is sent unless the
+                   // admin explicitly leaves it selected and submits
+                   const defaultCandidate = candidates.find(c => c.is_default);
+                   setSelectedInitialsByUserId(defaultCandidate?.id || 0);
                     await fetchLetterCode(new Date());
                     setIsLoading(true);
                 } catch (error) {
@@ -260,6 +274,7 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
             setNewOrgAddress("");
             setNewOrgEmail("");
             setNewOrgTelephone("");
+            setNewOrgFax("");  
             setIsEditingDepts(false);     
             setIsEditingAssignees(false);  
             setDatePopoverOpen(false);
@@ -268,13 +283,15 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
             setAssigneeDeptFilter(0);   // NEW
             setAssigneeUnitFilter(0);   // NEW
             setAssigneeSearch("");      // NEW
+            setSelectedInitialsByUserId(0);
         }
     };
 
-    const handleAddOrganization = async () => {
-    if (!newOrgName.trim()) return;
+    // replace handleAddOrganization with:
+const handleAddOrganization = async () => {
+    if (!newOrgName.trim() || isSubmittingOrg) return;
 
-    // NEW: block duplicate organization names (case-insensitive)
+    // block duplicate organization names (case-insensitive)
     const existing = organizations.find(
         o => o.name.trim().toLowerCase() === newOrgName.trim().toLowerCase()
     );
@@ -288,18 +305,23 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
         setNewOrgAddress("");
         setNewOrgEmail("");
         setNewOrgTelephone("");
+        setNewOrgFax("");
         setIsAddingOrg(false);
         setOrgPopoverOpen(false);
         setOrgSearch("");
         return;
     }
 
+    // NEW — guards against a second click firing a duplicate create request
+    // while the first one is still in flight
+    setIsSubmittingOrg(true);
     try {
         const res = await api.post('/v1/organization/', {
             name: newOrgName.trim(),
             address: newOrgAddress.trim() || null,
             email: newOrgEmail.trim() || null,
             telephone: newOrgTelephone.trim() || null,
+            fax_no: newOrgFax.trim() || null, // NEW
         });
         const newOrg = res.data.data;
         onOrganizationAdded?.(newOrg);
@@ -311,14 +333,18 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
         setNewOrgAddress("");
         setNewOrgEmail("");
         setNewOrgTelephone("");
+        setNewOrgFax("");
         setIsAddingOrg(false);
         setOrgPopoverOpen(false);
         setOrgSearch("");
         toast.success("Organization added successfully");
     } catch (error) {
         toast.error(error.response?.data?.message || 'Failed to add organization');
+    } finally {
+        setIsSubmittingOrg(false);
     }
 };
+
     const toggleDepartment = (id: number) => {
         const current = selectedDepartmentIds;
         const updated = current.includes(id) ? current.filter(d => d !== id) : [...current, id];
@@ -380,6 +406,8 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                 telephone: data.telephone || null,
                 organization_id: data.organization || null,
                 source_id: data.source,
+                is_public_complaint: data.is_public_complaint,
+                initials_by_pending_user_id: selectedInitialsByUserId || null,
                 assignee_ids: data.assignee_ids || [],
                 department_ids: data.department_ids || [],
             };
@@ -730,18 +758,38 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                                                                         }
                                                                                     }}
                                                                                 />
+
+                                                                                <Input
+                                                                                        placeholder="Fax No "
+                                                                                        value={newOrgFax}
+                                                                                        onChange={(e) => setNewOrgFax(e.target.value)}
+                                                                                        className="h-8 text-sm"
+                                                                                        disabled={isSubmittingOrg}
+                                                                                        onKeyDown={(e) => {
+                                                                                            if (e.key === 'Enter') { e.preventDefault(); handleAddOrganization(); }
+                                                                                            if (e.key === 'Escape') {
+                                                                                                setIsAddingOrg(false);
+                                                                                                setNewOrgName("");
+                                                                                                setNewOrgAddress("");
+                                                                                                setNewOrgEmail("");
+                                                                                                setNewOrgTelephone("");
+                                                                                                setNewOrgFax("");
+                                                                                            }
+                                                                                        }}
+                                                                                    />
                                                                                 <div className="flex gap-2 justify-end mt-1">
-                                                                                    <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => {
+                                                                                    <Button type="button" size="sm" variant="ghost" className="h-8" disabled={isSubmittingOrg} onClick={() => {
                                                                                         setIsAddingOrg(false);
                                                                                         setNewOrgName("");
                                                                                         setNewOrgAddress("");
                                                                                         setNewOrgEmail("");
                                                                                         setNewOrgTelephone("");
+                                                                                        setNewOrgFax("");
                                                                                     }}>
                                                                                         <X className="h-4 w-4"/>
                                                                                     </Button>
-                                                                                    <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization} disabled={!newOrgName.trim()}>
-                                                                                        Add
+                                                                                    <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization} disabled={!newOrgName.trim() || isSubmittingOrg}>
+                                                                                        {isSubmittingOrg ? <Loader2 className="h-4 w-4 animate-spin"/> : "Add"}
                                                                                     </Button>
                                                                                 </div>
                                                                             </div>
@@ -779,6 +827,7 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                         )}/>
                                     )}
 
+                                   
                                     {/* Sender's Address */}
                                     <FormField control={control} name="sender" render={({field}) => (
                                         <FormItem>
@@ -871,6 +920,67 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
                                             <FormMessage/>
                                         </FormItem>
                                     )}/>
+ {/* NEW — Public Complaint (මහජන පැමිණිල්ලක්ද) Yes/No */}
+                                   <FormField control={control} name="is_public_complaint" render={({field}) => (
+                                       <FormItem>
+                                          <FormLabel>Is this a Public Complaint? (මහජන පැමිණිල්ලක්ද?)</FormLabel>
+                                           <FormControl>
+                                               <div className="flex gap-2">
+                                                  <Button
+                                                       type="button"
+                                                       variant={field.value ? "default" : "outline"}
+                                                      size="sm"
+                                                       className="flex-1"
+                                                      disabled={isSubmitting}
+                                                      onClick={() => field.onChange(true)}
+                                                   >
+                                                       Yes
+                                                   </Button>
+                                                   <Button
+                                                       type="button"
+                                                       variant={!field.value ? "default" : "outline"}
+                                                      size="sm"
+                                                       className="flex-1"
+                                                      disabled={isSubmitting}
+                                                      onClick={() => field.onChange(false)}
+                                                  >
+                                                       No
+                                                  </Button>
+                                              </div>
+                                           </FormControl>
+                                           <FormMessage/>
+                                       </FormItem>
+                                   )}/>
+
+                                {/* NEW — optional: send an Initials By confirmation request right away.
+    Leave unset to skip this for now — it can always be sent later from
+    the Letter View page. Pre-selected to the default candidate for
+    convenience, but nothing is sent unless this stays selected on submit. */}
+<div className="space-y-2">
+    <FormLabel>Send for Initials Confirmation (optional)</FormLabel>
+    <Select
+        value={selectedInitialsByUserId ? selectedInitialsByUserId.toString() : "none"}
+        onValueChange={(v) => setSelectedInitialsByUserId(v === "none" ? 0 : parseInt(v))}
+    >
+        <SelectTrigger className="w-full">
+            <SelectValue placeholder="Don't send yet"/>
+        </SelectTrigger>
+        <SelectContent>
+            <SelectItem value="none">Don&apos;t send yet</SelectItem>
+            {initialsByCandidates.map(c => (
+                <SelectItem key={c.id} value={c.id.toString()}>
+                    {c.name}{c.is_default ? ' (default)' : ''}
+                </SelectItem>
+            ))}
+        </SelectContent>
+    </Select>
+    <p className="text-xs text-muted-foreground">
+        {selectedInitialsByUserId
+            ? "A confirmation request will be sent to this person as soon as the letter is created."
+            : "No request will be sent now — you can send one later from the letter's page."}
+    </p>
+</div>   
+
 
                                     {/* Departments Multi-select */}
                                    

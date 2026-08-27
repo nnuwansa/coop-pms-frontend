@@ -1,4 +1,3 @@
-
 'use client';
 
 import {ChangeEvent, useCallback, useEffect, useRef, useState} from 'react';
@@ -22,6 +21,9 @@ import {toast} from "sonner";
 import {ACCEPTED_FILE_TYPES, MAX_FILE_SIZE} from "@/lib/client-config";
 import api from "@/lib/api";
 
+// NEW — kept in sync with InsertLetterModal's limit so both forms behave the same
+const SUBJECT_MAX_LENGTH = 3000;
+
 // Modified file schema to handle both File objects and existing attachment URLs
 const fileSchema = z.custom<File>()
     .refine((file) => file instanceof File, "Must be a file")
@@ -43,13 +45,14 @@ const remarkFormSchema = z.object({
         .max(15, "Code cannot exceed 15 characters"),
     source: z.number().min(1, "Source is required"),
     sourceName: z.string().optional(), // used only to drive the Registered Post field visibility
+    sourceCode: z.string().optional(), // NEW — mirrors InsertLetterModal, drives Registered Post logic reliably (id-based, not name string match)
     sender: z.string()
         .max(150, "Sender cannot exceed 150 characters")
         .optional(),
     organization: z.number().optional(),
     subject: z.string()
         .min(1, "Subject is required")
-        .max(150, "Subject cannot exceed 150 characters"),
+        .max(SUBJECT_MAX_LENGTH, `Subject/Content cannot exceed ${SUBJECT_MAX_LENGTH} characters`), // CHANGED — was 150, now matches Insert's limit
     content: z.string()
         .max(4000, "Content cannot exceed 4000 characters")
         .optional()
@@ -75,6 +78,7 @@ const remarkFormSchema = z.object({
     registered_post_no: z.string()
         .max(50, "Registered Postal Number cannot exceed 50 characters")
         .optional(),
+    is_public_complaint: z.boolean().default(false),      
     attachments: z
         .array(
             z.object({
@@ -91,6 +95,11 @@ const remarkFormSchema = z.object({
     .refine((data) => data.sender || data.organization, {
         message: "Either sender or organization must be provided",
         path: ["sender"],
+    })
+    // NEW — same rule as InsertLetterModal: Registered Postal Number is mandatory once Source = Registered Post
+    .refine((data) => data.sourceCode !== "REGISTERED_POST" || !!data.registered_post_no?.trim(), {
+        message: "Registered Postal Number is required when Source is Registered Post",
+        path: ["registered_post_no"],
     });
 
 type RemarkFormValues = z.infer<typeof remarkFormSchema>;
@@ -116,7 +125,8 @@ interface UpdateLetterModalProps {
 
 export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}: UpdateLetterModalProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [sources, setSources] = useState<{ id: number; name: string }[]>([]);
+    // CHANGED — sources now carry `code` too, so Registered Post detection can match InsertLetterModal's id/code-based approach instead of comparing display names
+    const [sources, setSources] = useState<{ id: number; name: string; code?: string }[]>([]);
     const [organizations, setOrganizations] = useState<Organization[]>([]);
     // NEW — system users, so the Organization field can also offer "System Users"
     // as senders, exactly like the Insert Letter modal does.
@@ -135,6 +145,8 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
     const [newOrgAddress, setNewOrgAddress] = useState("");
     const [newOrgEmail, setNewOrgEmail] = useState("");
     const [newOrgTelephone, setNewOrgTelephone] = useState("");
+    const [newOrgFax, setNewOrgFax] = useState(""); // NEW — Fax No, same as the Add Organization page
+    const [isSubmittingOrg, setIsSubmittingOrg] = useState(false); // NEW — guards against double-click creating duplicate orgs
     const [selectedSenderLabel, setSelectedSenderLabel] = useState("");
 
     const form = useForm<RemarkFormValues>({
@@ -144,6 +156,7 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
             code: "",
             source: undefined,
             sourceName: "",
+            sourceCode: "",
             sender: "",
             organization: undefined,
             subject: "",
@@ -153,6 +166,7 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
             other: "",
             sender_subject_no: "",
             registered_post_no: "",
+            is_public_complaint: false,
             attachments: [],
         },
     });
@@ -161,13 +175,23 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
     const attachments = watch("attachments");
     const selectedSourceId = watch("source");
     const selectedOrgId = watch("organization");
+    const subjectValue = watch("subject") || ""; // NEW — drives the character counter
 
     useEffect(() => {
         const src = sources.find(s => s.id === selectedSourceId);
         setValue("sourceName", src?.name || "");
+        setValue("sourceCode", src?.code || ""); // NEW
     }, [selectedSourceId, sources, setValue]);
 
-    const isRegisteredPost = watch("sourceName") === "Registered Post";
+    // CHANGED — was comparing sourceName to the literal string "Registered Post";
+    // now matches InsertLetterModal's approach using the source's `code`, which
+    // is what was actually causing the field to never appear (name mismatch).
+    const isRegisteredPost = watch("sourceCode") === "REGISTERED_POST";
+
+    // NEW — live character counter state for Subject/Content, matching Insert
+    const subjectRemaining = SUBJECT_MAX_LENGTH - subjectValue.length;
+    const subjectNearLimit = subjectRemaining <= 100;
+    const subjectExceeded = subjectRemaining < 0;
 
     useEffect(() => {
         // Function to convert a URL to a File object
@@ -217,6 +241,7 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                 code: letterData.code,
                 source: letterData.source?.id,
                 sourceName: letterData.source?.name || "",
+                sourceCode: letterData.source?.code || "", // NEW — will be re-derived from `sources` once that list loads, this just seeds it immediately
                 sender: letterData.sender || "",
                 organization: letterData.organization?.id,
                 subject: letterData.subject,
@@ -226,6 +251,7 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                 other: letterData.other || "",
                 sender_subject_no: letterData.sender_subject_no || "",
                 registered_post_no: letterData.registered_post_no || "",
+                is_public_complaint: letterData.is_public_complaint || false,
                 attachments: [],
             });
             // NEW — seed the combobox's display label from whatever's already saved
@@ -304,8 +330,10 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
     // NEW — mirrors the Insert Letter modal's "Add new organization" behaviour
     // exactly: blocks case-insensitive duplicate names (selecting the existing
     // one instead), otherwise creates the organization and selects it.
+    // CHANGED — guarded with isSubmittingOrg so a second click while the
+    // request is in flight can't fire a duplicate create call.
     const handleAddOrganization = useCallback(async () => {
-        if (!newOrgName.trim()) return;
+        if (!newOrgName.trim() || isSubmittingOrg) return;
 
         const existing = organizations.find(
             o => o.name.trim().toLowerCase() === newOrgName.trim().toLowerCase()
@@ -321,18 +349,21 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
             setNewOrgAddress("");
             setNewOrgEmail("");
             setNewOrgTelephone("");
+            setNewOrgFax("");
             setIsAddingOrg(false);
             setOrgPopoverOpen(false);
             setOrgSearch("");
             return;
         }
 
+        setIsSubmittingOrg(true);
         try {
             const res = await api.post('/v1/organization/', {
                 name: newOrgName.trim(),
                 address: newOrgAddress.trim() || null,
                 email: newOrgEmail.trim() || null,
                 telephone: newOrgTelephone.trim() || null,
+                fax_no: newOrgFax.trim() || null, // NEW
             });
             const newOrg = res.data.data;
             setOrganizations(prev => [...prev, newOrg]);
@@ -345,14 +376,17 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
             setNewOrgAddress("");
             setNewOrgEmail("");
             setNewOrgTelephone("");
+            setNewOrgFax("");
             setIsAddingOrg(false);
             setOrgPopoverOpen(false);
             setOrgSearch("");
             toast.success("Organization added successfully");
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to add organization');
+        } finally {
+            setIsSubmittingOrg(false);
         }
-    }, [newOrgName, newOrgAddress, newOrgEmail, newOrgTelephone, organizations, setValue]);
+    }, [newOrgName, newOrgAddress, newOrgEmail, newOrgTelephone, newOrgFax, organizations, setValue, isSubmittingOrg]);
 
     async function onSubmit(data: RemarkFormValues) {
         setIsSubmitting(true);
@@ -369,6 +403,7 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                 source_id: data.source,
                 sender_subject_no: data.sender_subject_no || null,
                 registered_post_no: data.registered_post_no || null,
+                is_public_complaint: data.is_public_complaint, 
             };
 
             const response = await api.put(`/v1/letter/${letterData.id}`, letterPayload);
@@ -663,24 +698,28 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                                                                             onChange={(e) => setNewOrgName(e.target.value)}
                                                                             className="h-8 text-sm"
                                                                             autoFocus
+                                                                            disabled={isSubmittingOrg}
                                                                         />
                                                                         <Input
                                                                             placeholder="Address "
                                                                             value={newOrgAddress}
                                                                             onChange={(e) => setNewOrgAddress(e.target.value)}
                                                                             className="h-8 text-sm"
+                                                                            disabled={isSubmittingOrg}
                                                                         />
                                                                         <Input
                                                                             placeholder="Email "
                                                                             value={newOrgEmail}
                                                                             onChange={(e) => setNewOrgEmail(e.target.value)}
                                                                             className="h-8 text-sm"
+                                                                            disabled={isSubmittingOrg}
                                                                         />
                                                                         <Input
                                                                             placeholder="Telephone "
                                                                             value={newOrgTelephone}
                                                                             onChange={(e) => setNewOrgTelephone(e.target.value)}
                                                                             className="h-8 text-sm"
+                                                                            disabled={isSubmittingOrg}
                                                                             onKeyDown={(e) => {
                                                                                 if (e.key === 'Enter') { e.preventDefault(); handleAddOrganization(); }
                                                                                 if (e.key === 'Escape') {
@@ -689,21 +728,43 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                                                                                     setNewOrgAddress("");
                                                                                     setNewOrgEmail("");
                                                                                     setNewOrgTelephone("");
+                                                                                    setNewOrgFax("");
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                        {/* NEW — Fax No, matching the Add Organization page */}
+                                                                        <Input
+                                                                            placeholder="Fax No "
+                                                                            value={newOrgFax}
+                                                                            onChange={(e) => setNewOrgFax(e.target.value)}
+                                                                            className="h-8 text-sm"
+                                                                            disabled={isSubmittingOrg}
+                                                                            onKeyDown={(e) => {
+                                                                                if (e.key === 'Enter') { e.preventDefault(); handleAddOrganization(); }
+                                                                                if (e.key === 'Escape') {
+                                                                                    setIsAddingOrg(false);
+                                                                                    setNewOrgName("");
+                                                                                    setNewOrgAddress("");
+                                                                                    setNewOrgEmail("");
+                                                                                    setNewOrgTelephone("");
+                                                                                    setNewOrgFax("");
                                                                                 }
                                                                             }}
                                                                         />
                                                                         <div className="flex gap-2 justify-end mt-1">
-                                                                            <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => {
+                                                                            <Button type="button" size="sm" variant="ghost" className="h-8" disabled={isSubmittingOrg} onClick={() => {
                                                                                 setIsAddingOrg(false);
                                                                                 setNewOrgName("");
                                                                                 setNewOrgAddress("");
                                                                                 setNewOrgEmail("");
                                                                                 setNewOrgTelephone("");
+                                                                                setNewOrgFax("");
                                                                             }}>
                                                                                 <X className="h-4 w-4"/>
                                                                             </Button>
-                                                                            <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization} disabled={!newOrgName.trim()}>
-                                                                                Add
+                                                                            {/* CHANGED — disabled while a create request is in flight + spinner, so double-clicking can't create duplicate orgs */}
+                                                                            <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization} disabled={!newOrgName.trim() || isSubmittingOrg}>
+                                                                                {isSubmittingOrg ? <Loader2 className="h-4 w-4 animate-spin"/> : "Add"}
                                                                             </Button>
                                                                         </div>
                                                                     </div>
@@ -725,14 +786,17 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                             </div>
                         </div>
 
-                        {/* NEW — item 16: Registered Postal Number, shown only when Source = "Registered Post" */}
+                        {/* Registered Postal Number, shown only when Source = "Registered Post" */}
                         {isRegisteredPost && (
                             <FormField
                                 control={control}
                                 name="registered_post_no"
                                 render={({field}) => (
                                     <FormItem>
-                                        <FormLabel htmlFor={field.name}>Registered Postal Number</FormLabel>
+                                        {/* CHANGED — added required marker, matching Insert Letter modal */}
+                                        <FormLabel htmlFor={field.name}>
+                                            Registered Postal Number <span className="text-destructive">*</span>
+                                        </FormLabel>
                                         <FormControl>
                                             <Input id={field.name} {...field} disabled={isSubmitting}
                                                 placeholder="Enter registered postal number"/>
@@ -742,6 +806,26 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                                 )}
                             />
                         )}
+                        {/* NEW — Public Complaint Yes/No */}
+                        <FormField control={control} name="is_public_complaint" render={({field}) => (
+                            <FormItem>
+                                <FormLabel>Is this a Public Complaint? (මහජන පැමිණිල්ලක්ද?)</FormLabel>
+                                <FormControl>
+                                    <div className="flex gap-2">
+                                        <Button type="button" variant={field.value ? "default" : "outline"} size="sm"
+                                            className="flex-1" disabled={isSubmitting} onClick={() => field.onChange(true)}>
+                                            Yes
+                                        </Button>
+                                        <Button type="button" variant={!field.value ? "default" : "outline"} size="sm"
+                                            className="flex-1" disabled={isSubmitting} onClick={() => field.onChange(false)}>
+                                            No
+                                        </Button>
+                                    </div>
+                                </FormControl>
+                                <FormMessage/>
+                            </FormItem>
+                        )}/>
+
 
                         <FormField
                             control={control}
@@ -757,14 +841,25 @@ export function UpdateLetterModal({isOpen, onCloseAction, letterData, onSuccess}
                             )}
                         />
 
+                        {/* CHANGED — Subject/Content is now a Textarea with a live character
+                            counter (same 3000-char limit as Insert Letter), instead of a plain
+                            Input capped at 150 chars with no visible feedback. */}
                         <FormField
                             control={control}
                             name="subject"
                             render={({field}) => (
                                 <FormItem>
-                                    <FormLabel htmlFor={field.name}>Subject/Content of the Letter</FormLabel>
+                                    <div className="flex items-center justify-between">
+                                        <FormLabel htmlFor={field.name}>Subject/Content of the Letter</FormLabel>
+                                        <span className={cn(
+                                            "text-xs",
+                                            subjectExceeded ? "text-destructive font-medium" : subjectNearLimit ? "text-amber-600" : "text-muted-foreground"
+                                        )}>
+                                            {subjectValue.length}/{SUBJECT_MAX_LENGTH}
+                                        </span>
+                                    </div>
                                     <FormControl>
-                                        <Input id={field.name} {...field} disabled={isSubmitting}/>
+                                        <Textarea id={field.name} {...field} disabled={isSubmitting} className="min-h-[160px]"/>
                                     </FormControl>
                                     <FormMessage/>
                                 </FormItem>

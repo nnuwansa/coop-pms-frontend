@@ -30,8 +30,6 @@ import {UpdateLetterModal} from "@/app/(dashboard)/letters/[id]/update-letter-mo
 import {InsertRemarkModal} from "@/app/(dashboard)/letters/[id]/insert-remark-modal";
 import {AttachmentPreview} from "@/app/(dashboard)/letters/[id]/attachment-preview";
 
-// ─── Interfaces ───────────────────────────────────────────────────────────────
-
 interface AttachmentItem {
     id: number;
     title: string;
@@ -54,13 +52,14 @@ interface LetterDetail {
     received_datetime: string;
     create_datetime: string;
     status: {id: number; name: string} | null;
-    status_days?: number | null;   // NEW
+    status_days?: number | null;
     status_id: number;
     departments: {id: number; name: string}[];
     assignees: {id: number; name: string}[];
-    recommended_to?: {id: number; name: string} | null;   // NEW — separate from assignees
+    recommended_to?: {id: number; name: string} | null;
     attachments: AttachmentItem[];
-    completion_file_name?: string | null;   // NEW
+    completion_file_name?: string | null;
+     is_public_complaint?: boolean;  
     cheque_deposited?: boolean;
     cheque_deposit_date?: string | null;
     cheque_account_no?: string | null;
@@ -68,8 +67,15 @@ interface LetterDetail {
     cheque_branch?: string | null;
     assignee_statuses: AssigneeStatus[];
     forwarded_to?: {id: number; name: string} | null;
-    remarks_count?: number;   // NEW — total active remark count, for the tab badge
-
+    initials_by?: {id: number; name: string} | null;
+    initials_by_notes?: string | null;
+    initials_by_pending?: {id: number; name: string} | null; 
+    // CHANGED — Order By is now two separate selections that combine into
+    // one seal: a role marker (නි.කො / ස.කො) and an action phrase
+    // (කරු. ඉදිරි කටයුතු සඳහා, etc), instead of one single Order By value.
+    order_by_role?: {id: number; name: string} | null;
+    order_by_action?: {id: number; name: string} | null;
+    remarks_count?: number;
 }
 
 interface Remark {
@@ -100,7 +106,6 @@ interface HistoryEntry {
     letter_id: number;
 }
 
-// NEW — remark edit/delete audit log entry
 interface RemarkHistoryEntry {
     id: number;
     remark_id: number;
@@ -120,24 +125,39 @@ interface AssigneeStatus {
     status_id: number;
     status_name: string;
     file_name?: string | null;
+    copies_forwarded_to?: string | null;
+    summary?: string | null;
     status_since?: string | null;
     status_days?: number | null;
-    can_edit: boolean; // true only for the logged-in user's own row
+    can_edit: boolean;
+    assigned_by_name?: string | null; 
+    
 }
 
 interface Department {id: number; name: string}
-interface Status {id: number; name: string; requires_file_name?: boolean;}   // CHANGED
+interface Status {
+    id: number;
+    name: string;
+    requires_file_name?: boolean;
+    requires_copies_forwarded_to?: boolean;
+    requires_summary?: boolean;
+}
 interface Assignee {id: number; name: string; department_id?: number | null; department_unit_id?: number | null}
 
-type LeftTab = 'remarks' | 'history' | 'remarkLog';
+interface InitialsByCandidate {id: number; name: string; is_default: boolean}
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// CHANGED — Order By options now come with a category so the picker can
+// split them into the Role list (නි.කො/ස.කො) and the Action list
+// (කරු. ඉදිරි කටයුතු සඳහා, etc).
+interface OrderByOptionItem {id: number; name: string; category: 'role' | 'action'}
+
+type LeftTab = 'remarks' | 'history' | 'remarkLog';
 
 const getStatusClassName = (status: string): string => {
     if (status === 'New') return 'bg-sky-100 text-sky-800 dark:bg-sky-800 dark:text-sky-200';
     if (status === 'Assigned') return 'bg-orange-100 text-yellow-800 dark:bg-orange-800 dark:text-yellow-200';
     if (status === 'In Progress') return 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200';
-   if (status === 'Not Relevant') return 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200';   // CHANGED
+   if (status === 'Not Relevant') return 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200';
     return 'bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-200';
 };
 
@@ -157,21 +177,18 @@ const formatFileSize = (bytes?: number | null): string => {
 };
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp'];
-const PDF_EXTENSIONS = ['.pdf']; // NEW — used to enable in-browser PDF preview
+const PDF_EXTENSIONS = ['.pdf'];
 
 const isImageAttachment = (nameOrUrl: string): boolean => {
     const lower = nameOrUrl.toLowerCase().split('?')[0];
     return IMAGE_EXTENSIONS.some(ext => lower.endsWith(ext));
 };
 
-// NEW — PDFs can be rendered natively by the browser via <iframe>, unlike
-// Excel/Word files, which have no built-in browser renderer.
 const isPdfAttachment = (nameOrUrl: string): boolean => {
     const lower = nameOrUrl.toLowerCase().split('?')[0];
     return PDF_EXTENSIONS.some(ext => lower.endsWith(ext));
 };
 
-// NEW — badge styling per remark-log action
 const getActionClassName = (action: string): string => {
     if (action === 'edit') return 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300';
     if (action === 'delete') return 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300';
@@ -184,9 +201,6 @@ const getActionLabel = (action: string): string => {
     return action;
 };
 
-// Triggers a browser download using a temporary anchor, without navigating the page.
-// Uses the authenticated `api` axios instance (not raw fetch) so the request
-// carries whatever auth mechanism the app uses (bearer token / cookies).
 const downloadAttachment = async (att: AttachmentItem) => {
     try {
         const res = await api.get(att.url, { responseType: 'blob' });
@@ -203,8 +217,6 @@ const downloadAttachment = async (att: AttachmentItem) => {
     }
 };
 
-// ─── Attachment Preview Modal ──────────────────────────────────────────────────
-
 function AttachmentPreviewDialog({
     attachment,
     onCloseAction,
@@ -214,7 +226,7 @@ function AttachmentPreviewDialog({
 }) {
     if (!attachment) return null;
     const isImage = isImageAttachment(attachment.title || attachment.url);
-    const isPdf = isPdfAttachment(attachment.title || attachment.url); // NEW
+    const isPdf = isPdfAttachment(attachment.title || attachment.url);
 
     return (
         <Dialog open={!!attachment} onOpenChange={(open) => { if (!open) onCloseAction(); }}>
@@ -239,9 +251,6 @@ function AttachmentPreviewDialog({
                             className="max-w-full max-h-[60vh] object-contain rounded-md shadow-sm"
                         />
                     ) : isPdf ? (
-                        // NEW — PDFs render natively in the browser via iframe.
-                        // Excel/Word files have no browser-native renderer, so
-                        // they fall through to the "download to view" message below.
                         <iframe
                             src={attachment.url}
                             className="w-full h-[65vh] rounded-md border bg-white"
@@ -269,8 +278,6 @@ function AttachmentPreviewDialog({
         </Dialog>
     );
 }
-
-// ─── Attachment Chip (list item) ────────────────────────────────────────────────
 
 function AttachmentChip({att, onPreview}: {att: AttachmentItem; onPreview: (att: AttachmentItem) => void}) {
     const isImage = isImageAttachment(att.title || att.url);
@@ -307,21 +314,17 @@ function AttachmentChip({att, onPreview}: {att: AttachmentItem; onPreview: (att:
     );
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export default function LetterViewPage() {
     const {id} = useParams<{id: string}>();
     const router = useRouter();
     const {hasPermission, user} = useAuthStore();
-const allowedStatusIds = user?.allowed_status_ids ?? [];
+    const allowedStatusIds = user?.allowed_status_ids ?? [];
 
     const [letter, setLetter] = useState<LetterDetail | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [allDepartments, setAllDepartments] = useState<Department[]>([]);
     const [allStatuses, setAllStatuses] = useState<Status[]>([]);
     const [allAssignees, setAllAssignees] = useState<Assignee[]>([]);
-    // NEW — narrows the Assignees checklist by Department, then Sub-Unit
-    // (if that department has any), plus free-text search.
     const [assigneeDeptFilter, setAssigneeDeptFilter] = useState<number>(0);
     const [assigneeUnitFilter, setAssigneeUnitFilter] = useState<number>(0);
     const [assigneeUnits, setAssigneeUnits] = useState<{id: number; name: string}[]>([]);
@@ -329,21 +332,11 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
     const [selectedDeptIds, setSelectedDeptIds] = useState<number[]>([]);
     const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<number[]>([]);
     const [selectedStatusId, setSelectedStatusId] = useState<number>(0);
-    // NEW — "Recommended To" is its own selection, entirely separate from
-    // Assignees, so picking who to recommend the letter to never removes the
-    // person the letter is actually assigned to.
     const [selectedRecommendedToId, setSelectedRecommendedToId] = useState<number>(0);
     const [originalRecommendedToId, setOriginalRecommendedToId] = useState<number>(0);
-    // NEW — Department/Sub-Unit filter for the "Recommended To" picker, same
-    // pattern as the Assignees filter above, so long user lists can be
-    // narrowed down by department first.
     const [recommendedDeptFilter, setRecommendedDeptFilter] = useState<number>(0);
     const [recommendedUnitFilter, setRecommendedUnitFilter] = useState<number>(0);
     const [recommendedUnits, setRecommendedUnits] = useState<{id: number; name: string}[]>([]);
-    // NEW — "Send to Recommendation" is now a standalone checkbox, independent
-    // of whatever status is selected. Previously this was driven by checking
-    // whether the Status dropdown happened to say "Recommendation", which
-    // forced people to change the status just to recommend a letter.
     const [sendToRecommendation, setSendToRecommendation] = useState(false);
     const [originalSendToRecommendation, setOriginalSendToRecommendation] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -357,22 +350,20 @@ const allowedStatusIds = user?.allowed_status_ids ?? [];
     const [showEditModal, setShowEditModal] = useState(false);
     const [previewAttachment, setPreviewAttachment] = useState<AttachmentItem | null>(null);
     const [completionFileName, setCompletionFileName] = useState("");
-   const selectedStatusObj = allStatuses.find(s => s.id === selectedStatusId);
-const isFileNameRequiredNow = !!selectedStatusObj?.requires_file_name;   // CHANGED — generalized
-const [chequeDeposited, setChequeDeposited] = useState(false);
-const [chequeDepositDate, setChequeDepositDate] = useState("");
-const [chequeAccountNo, setChequeAccountNo] = useState("");
-const [chequeBank, setChequeBank] = useState("");
-const [chequeBranch, setChequeBranch] = useState("");
-const [isEditingCheque, setIsEditingCheque] = useState(false);
-const [isSavingCheque, setIsSavingCheque] = useState(false);
-const [departmentAccounts, setDepartmentAccounts] = useState([]);
+    const selectedStatusObj = allStatuses.find(s => s.id === selectedStatusId);
+    const isFileNameRequiredNow = !!selectedStatusObj?.requires_file_name;
+    const [chequeDeposited, setChequeDeposited] = useState(false);
+    const [chequeDepositDate, setChequeDepositDate] = useState("");
+    const [chequeAccountNo, setChequeAccountNo] = useState("");
+    const [chequeBank, setChequeBank] = useState("");
+    const [chequeBranch, setChequeBranch] = useState("");
+    const [isEditingCheque, setIsEditingCheque] = useState(false);
+    const [isSavingCheque, setIsSavingCheque] = useState(false);
+    const [departmentAccounts, setDepartmentAccounts] = useState([]);
 
-    // NEW — remark edit/delete audit log state
     const [remarkHistory, setRemarkHistory] = useState<RemarkHistoryEntry[]>([]);
     const [remarkHistoryLoading, setRemarkHistoryLoading] = useState(false);
 
-    // ── Remark edit/delete state ────────────────────────────────────────────
     const [editingRemark, setEditingRemark] = useState<Remark | null>(null);
     const [editContent, setEditContent] = useState("");
     const [editReason, setEditReason] = useState("");
@@ -382,42 +373,69 @@ const [departmentAccounts, setDepartmentAccounts] = useState([]);
     const [deleteReason, setDeleteReason] = useState("");
     const [isDeletingRemark, setIsDeletingRemark] = useState(false);
 
-    // Baseline ("last saved") state used to detect unsaved changes
     const [originalDeptIds, setOriginalDeptIds] = useState<number[]>([]);
     const [originalAssigneeIds, setOriginalAssigneeIds] = useState<number[]>([]);
     const [originalStatusId, setOriginalStatusId] = useState<number>(0);
 
-
     const [assigneeStatusEditingId, setAssigneeStatusEditingId] = useState<number | null>(null);
-const [assigneeStatusDraftId, setAssigneeStatusDraftId] = useState<number>(0);
-const [assigneeStatusDraftFileName, setAssigneeStatusDraftFileName] = useState("");
-const [isSavingAssigneeStatus, setIsSavingAssigneeStatus] = useState(false);
-    
-        const [selectedForwardedToId, setSelectedForwardedToId] = useState<number>(0);
-const [originalForwardedToId, setOriginalForwardedToId] = useState<number>(0);
-const [forwardChecked, setForwardChecked] = useState(false);
-const [originalForwardChecked, setOriginalForwardChecked] = useState(false);
-const [forwardDeptFilter, setForwardDeptFilter] = useState<number>(0);
-const [forwardUnitFilter, setForwardUnitFilter] = useState<number>(0);
-const [forwardUnits, setForwardUnits] = useState<{id: number; name: string}[]>([]);
-const [isSavingForward, setIsSavingForward] = useState(false); // only used if you wire a standalone save; omit if using the main Save Changes button
-const isDirty =
-    selectedStatusId !== originalStatusId ||
-    !arraysEqual(selectedDeptIds, originalDeptIds) ||
-    !arraysEqual(selectedAssigneeIds, originalAssigneeIds) ||
-    selectedForwardedToId !== originalForwardedToId ||
-    forwardChecked !== originalForwardChecked ||
-    selectedRecommendedToId !== originalRecommendedToId ||   // NEW
-    sendToRecommendation !== originalSendToRecommendation;   // NEW
+    const [assigneeStatusDraftId, setAssigneeStatusDraftId] = useState<number>(0);
+    const [assigneeStatusDraftFileName, setAssigneeStatusDraftFileName] = useState("");
+    const [myManagedFiles, setMyManagedFiles] = useState<{id: number; file_number: string; subject: string}[]>([]);
+    const [assigneeStatusDraftCopiesForwardedTo, setAssigneeStatusDraftCopiesForwardedTo] = useState("");
+    const [assigneeStatusDraftSummary, setAssigneeStatusDraftSummary] = useState("");
+    const [isSavingAssigneeStatus, setIsSavingAssigneeStatus] = useState(false);
+
+    const [selectedForwardedToId, setSelectedForwardedToId] = useState<number>(0);
+    const [originalForwardedToId, setOriginalForwardedToId] = useState<number>(0);
+    const [forwardChecked, setForwardChecked] = useState(false);
+    const [originalForwardChecked, setOriginalForwardChecked] = useState(false);
+    const [forwardDeptFilter, setForwardDeptFilter] = useState<number>(0);
+    const [forwardUnitFilter, setForwardUnitFilter] = useState<number>(0);
+    const [forwardUnits, setForwardUnits] = useState<{id: number; name: string}[]>([]);
+
+    const [initialsByCandidates, setInitialsByCandidates] = useState<InitialsByCandidate[]>([]);
+    const [selectedPendingCandidateId, setSelectedPendingCandidateId] = useState<number>(0);   // NEW — admin's dropdown selection
+   const [isAssigningInitialsBy, setIsAssigningInitialsBy] = useState(false);
+   const [confirmNotes, setConfirmNotes] = useState("");   // NEW — the candidate's own notes when confirming
+   const [isConfirmingInitialsBy, setIsConfirmingInitialsBy] = useState(false);
+
+    // CHANGED — Order By is now two independently-managed lists: Role
+    // (නි.කො / ස.කො) and Action (කරු. ඉදිරි කටයුතු සඳහා, etc). Both are
+    // fetched from the same /v1/order-by-option/list endpoint and split
+    // client-side by `category`.
+    const [orderByRoleOptions, setOrderByRoleOptions] = useState<OrderByOptionItem[]>([]);
+    const [orderByActionOptions, setOrderByActionOptions] = useState<OrderByOptionItem[]>([]);
+    const [selectedOrderByRoleId, setSelectedOrderByRoleId] = useState<number>(0);
+    const [originalOrderByRoleId, setOriginalOrderByRoleId] = useState<number>(0);
+    const [selectedOrderByActionId, setSelectedOrderByActionId] = useState<number>(0);
+    const [originalOrderByActionId, setOriginalOrderByActionId] = useState<number>(0);
+    // separate "add missing" inline forms for each category
+    const [isAddingRole, setIsAddingRole] = useState(false);
+    const [newRoleName, setNewRoleName] = useState("");
+    const [isSavingRole, setIsSavingRole] = useState(false);
+    const [isAddingAction, setIsAddingAction] = useState(false);
+    const [newActionName, setNewActionName] = useState("");
+    const [isSavingAction, setIsSavingAction] = useState(false);
+
+    const isDirty =
+        selectedStatusId !== originalStatusId ||
+        !arraysEqual(selectedDeptIds, originalDeptIds) ||
+        !arraysEqual(selectedAssigneeIds, originalAssigneeIds) ||
+        selectedForwardedToId !== originalForwardedToId ||
+        forwardChecked !== originalForwardChecked ||
+        selectedRecommendedToId !== originalRecommendedToId ||
+        sendToRecommendation !== originalSendToRecommendation ||
+        selectedOrderByRoleId !== originalOrderByRoleId ||
+    selectedOrderByActionId !== originalOrderByActionId;
+        selectedOrderByRoleId !== originalOrderByRoleId ||
+        selectedOrderByActionId !== originalOrderByActionId;
 
     const isDirtyRef = useRef(isDirty);
     useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
 
-    // Custom "unsaved changes" popup dialog state.
     const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
     const pendingActionRef = useRef<(() => void) | null>(null);
 
-    // NEW — fetch this department's sub-units whenever the assignee dept filter changes
     useEffect(() => {
         setAssigneeUnitFilter(0);
         if (!assigneeDeptFilter) { setAssigneeUnits([]); return; }
@@ -426,8 +444,6 @@ const isDirty =
             .catch(() => setAssigneeUnits([]));
     }, [assigneeDeptFilter]);
 
-    // NEW — fetch this department's sub-units whenever the "Recommended To"
-    // dept filter changes, mirroring the assignee filter behaviour above.
     useEffect(() => {
         setRecommendedUnitFilter(0);
         if (!recommendedDeptFilter) { setRecommendedUnits([]); return; }
@@ -443,20 +459,13 @@ const isDirty =
     );
 
     useEffect(() => {
-    setForwardUnitFilter(0);
-    if (!forwardDeptFilter) { setForwardUnits([]); return; }
-    api.get(`/v1/department/${forwardDeptFilter}/units`)
-        .then(r => setForwardUnits(r.data.data || []))
-        .catch(() => setForwardUnits([]));
-}, [forwardDeptFilter]);
- 
-const filteredForwardAssignees = allAssignees.filter(a =>
-    (!forwardDeptFilter || a.department_id === forwardDeptFilter) &&
-    (!forwardUnitFilter || a.department_unit_id === forwardUnitFilter)
-);
+        setForwardUnitFilter(0);
+        if (!forwardDeptFilter) { setForwardUnits([]); return; }
+        api.get(`/v1/department/${forwardDeptFilter}/units`)
+            .then(r => setForwardUnits(r.data.data || []))
+            .catch(() => setForwardUnits([]));
+    }, [forwardDeptFilter]);
 
-    // NEW — same department/sub-unit narrowing, applied to the
-    // "Recommended To" user picker instead of the Assignees picker.
     const filteredRecommendedToAssignees = allAssignees.filter(a =>
         (!recommendedDeptFilter || a.department_id === recommendedDeptFilter) &&
         (!recommendedUnitFilter || a.department_unit_id === recommendedUnitFilter)
@@ -483,17 +492,18 @@ const filteredForwardAssignees = allAssignees.filter(a =>
         pendingActionRef.current = null;
     };
 
-    // ── Fetch letter ──────────────────────────────────────────────────────────
-
     const fetchLetter = useCallback(async () => {
         try {
             setIsLoading(true);
-            const [letterRes, deptRes, statusRes, assigneeRes, deptAccountsRes] = await Promise.all([
+            const [letterRes, deptRes, statusRes, assigneeRes, deptAccountsRes, initialsByRes, orderByRes, myFilesRes] = await Promise.all([
                 api.get(`/v1/letter/${id}`),
                 api.get('/v1/department/list'),
                 api.get('/v1/status/list'),
                 api.get('/v1/system_user/names'),
-                 api.get('/v1/system_user/department-accounts'),  
+                api.get('/v1/system_user/department-accounts'),
+                api.get('/v1/system_user/by-permission/letter.initials_by'),
+                api.get('/v1/order-by-option/list'),   // returns items from BOTH categories — split below
+                api.get('/v1/managed-file/mine'),
             ]);
             const data: LetterDetail = letterRes.data.data;
             setLetter(data);
@@ -513,20 +523,39 @@ const filteredForwardAssignees = allAssignees.filter(a =>
             setChequeAccountNo(data.cheque_account_no || "");
             setChequeBank(data.cheque_bank || "");
             setChequeBranch(data.cheque_branch || "");
-            setCompletionFileName(data.completion_file_name || "");   // NEW — keep the input in sync with saved value
-            setSelectedRecommendedToId(data.recommended_to?.id || 0);   // NEW
-            setOriginalRecommendedToId(data.recommended_to?.id || 0);   // NEW
-            setSendToRecommendation(!!data.recommended_to);   // NEW
-            setOriginalSendToRecommendation(!!data.recommended_to);   // NEW
+            setCompletionFileName(data.completion_file_name || "");
+            setSelectedRecommendedToId(data.recommended_to?.id || 0);
+            setOriginalRecommendedToId(data.recommended_to?.id || 0);
+            setSendToRecommendation(!!data.recommended_to);
+            setOriginalSendToRecommendation(!!data.recommended_to);
             setSelectedForwardedToId(data.forwarded_to?.id || 0);
-  setOriginalForwardedToId(data.forwarded_to?.id || 0);
-   setForwardChecked(!!data.forwarded_to);
-   setOriginalForwardChecked(!!data.forwarded_to);
+            setOriginalForwardedToId(data.forwarded_to?.id || 0);
+            setForwardChecked(!!data.forwarded_to);
+            setOriginalForwardChecked(!!data.forwarded_to);
 
             if (deptRes.data.success) setAllDepartments(deptRes.data.data);
             if (statusRes.data.success) setAllStatuses(statusRes.data.data);
             if (assigneeRes.data.success) setAllAssignees(assigneeRes.data.data);
-            if (deptAccountsRes.data.success) setDepartmentAccounts(deptAccountsRes.data.data); 
+            if (deptAccountsRes.data.success) setDepartmentAccounts(deptAccountsRes.data.data);
+
+            const candidates: InitialsByCandidate[] = initialsByRes.data.success ? initialsByRes.data.data : [];
+            setInitialsByCandidates(candidates);
+             // NEW — pre-select the currently pending candidate (if any) in
+           // the admin dropdown, so re-opening the page shows the live state
+           setSelectedPendingCandidateId(data.initials_by_pending?.id || 0);
+           setConfirmNotes("");
+
+            // CHANGED — split the combined Order By option list into Role
+            // (නි.කො/ස.කො) and Action (කරු. ...) sub-lists by category.
+            const allOrderByOptions: OrderByOptionItem[] = orderByRes.data.success ? orderByRes.data.data : [];
+            setOrderByRoleOptions(allOrderByOptions.filter(o => o.category === 'role'));
+            setOrderByActionOptions(allOrderByOptions.filter(o => o.category === 'action'));
+            setSelectedOrderByRoleId(data.order_by_role?.id || 0);
+            setOriginalOrderByRoleId(data.order_by_role?.id || 0);
+            setSelectedOrderByActionId(data.order_by_action?.id || 0);
+            setOriginalOrderByActionId(data.order_by_action?.id || 0);
+
+            setMyManagedFiles(myFilesRes.data.success ? myFilesRes.data.data : []);
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to load letter');
         } finally {
@@ -535,8 +564,6 @@ const filteredForwardAssignees = allAssignees.filter(a =>
     }, [id]);
 
     useEffect(() => { fetchLetter(); }, [fetchLetter]);
-
-    // ── Fetch remarks ─────────────────────────────────────────────────────────
 
     const fetchRemarks = useCallback(async () => {
         try {
@@ -551,26 +578,24 @@ const filteredForwardAssignees = allAssignees.filter(a =>
     }, [id]);
 
     const handleSaveCheque = async () => {
-    try {
-        setIsSavingCheque(true);
-        await api.put(`/v1/letter/${id}/cheque`, {
-            deposited: chequeDeposited,
-            deposit_date: chequeDeposited && chequeDepositDate ? new Date(chequeDepositDate).toISOString() : null,
-            account_no: chequeDeposited ? chequeAccountNo : null,
-            bank: chequeDeposited ? chequeBank : null,
-            branch: chequeDeposited ? chequeBranch : null,
-        });
-        toast.success("Cheque details saved");
-        setIsEditingCheque(false);   // NEW — collapse back to read-only view after saving
-        fetchLetter();
-    } catch (error) {
-        toast.error(error.response?.data?.message || 'Failed to save cheque details');
-    } finally {
-        setIsSavingCheque(false);
-    }
+        try {
+            setIsSavingCheque(true);
+            await api.put(`/v1/letter/${id}/cheque`, {
+                deposited: chequeDeposited,
+                deposit_date: chequeDeposited && chequeDepositDate ? new Date(chequeDepositDate).toISOString() : null,
+                account_no: chequeDeposited ? chequeAccountNo : null,
+                bank: chequeDeposited ? chequeBank : null,
+                branch: chequeDeposited ? chequeBranch : null,
+            });
+            toast.success("Cheque details saved");
+            setIsEditingCheque(false);
+            fetchLetter();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to save cheque details');
+        } finally {
+            setIsSavingCheque(false);
+        }
     };
-
-    // ── Fetch letter history ────────────────────────────────────────────────
 
     const fetchHistory = useCallback(async () => {
         try {
@@ -584,48 +609,103 @@ const filteredForwardAssignees = allAssignees.filter(a =>
         }
     }, [id]);
 
-    const openEditAssigneeStatus = (row: AssigneeStatus) => {
-    if (!row.can_edit) return; // guard — never allow editing someone else's row, even via console/devtools
-    setAssigneeStatusEditingId(row.assignee_id);
-    setAssigneeStatusDraftId(row.status_id);
-    setAssigneeStatusDraftFileName(row.file_name || "");
-};
- 
-const cancelEditAssigneeStatus = () => {
-    setAssigneeStatusEditingId(null);
-    setAssigneeStatusDraftId(0);
-    setAssigneeStatusDraftFileName("");
-};
- 
-const draftAssigneeStatusObj = allStatuses.find(s => s.id === assigneeStatusDraftId);
-const assigneeStatusFileNameRequired = !!draftAssigneeStatusObj?.requires_file_name;
- 
-const handleSaveAssigneeStatus = async () => {
-    if (assigneeStatusFileNameRequired && !assigneeStatusDraftFileName.trim()) {
-        toast.error(`File Name is required when setting status to "${draftAssigneeStatusObj?.name}"`);
-        return;
-    }
-    try {
-        setIsSavingAssigneeStatus(true);
-        // NOTE: no assignee_id is sent in the body — the backend always
-        // writes to current_user.id, so this can never touch another
-        // assignee's row even if the payload were tampered with.
-        await api.put(`/v1/letter/${id}/assignee-status`, {
-            status_id: assigneeStatusDraftId,
-            file_name: assigneeStatusFileNameRequired ? assigneeStatusDraftFileName.trim() : null,
-        });
-        toast.success("Your status has been updated");
-        cancelEditAssigneeStatus();
-        fetchLetter();
-    } catch (error) {
-        toast.error(error.response?.data?.message || "Failed to update your status");
-    } finally {
-        setIsSavingAssigneeStatus(false);
-    }
-};
- 
+    // NEW — quick-add for a missing Role option (නි.කො / ස.කො).
+    // category='role' is passed so it lands in the right list on refetch.
+    const handleAddRole = async () => {
+        if (!newRoleName.trim()) {
+            toast.error("Enter a name for the new role");
+            return;
+        }
+        try {
+            setIsSavingRole(true);
+            const res = await api.post('/v1/order-by-option/quick-add', {name: newRoleName.trim(), category: 'role'});
+            const created = res.data.data;
+            setOrderByRoleOptions(prev => [...prev, {id: created.id, name: created.name, category: 'role'}]);
+            setSelectedOrderByRoleId(created.id);
+            setNewRoleName("");
+            setIsAddingRole(false);
+            toast.success("Role added");
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to add role");
+        } finally {
+            setIsSavingRole(false);
+        }
+    };
 
-    // ── Fetch remark edit/delete log — NEW ──────────────────────────────────
+    // NEW — quick-add for a missing Action option (කරු. ඉදිරි කටයුතු සඳහා, etc)
+    const handleAddAction = async () => {
+        if (!newActionName.trim()) {
+            toast.error("Enter a name for the new action");
+            return;
+        }
+        try {
+            setIsSavingAction(true);
+            const res = await api.post('/v1/order-by-option/quick-add', {name: newActionName.trim(), category: 'action'});
+            const created = res.data.data;
+            setOrderByActionOptions(prev => [...prev, {id: created.id, name: created.name, category: 'action'}]);
+            setSelectedOrderByActionId(created.id);
+            setNewActionName("");
+            setIsAddingAction(false);
+            toast.success("Action added");
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to add action");
+        } finally {
+            setIsSavingAction(false);
+        }
+    };
+
+    const openEditAssigneeStatus = (row: AssigneeStatus) => {
+        if (!row.can_edit) return;
+        setAssigneeStatusEditingId(row.assignee_id);
+        setAssigneeStatusDraftId(row.status_id);
+        setAssigneeStatusDraftFileName(row.file_name || "");
+        setAssigneeStatusDraftCopiesForwardedTo(row.copies_forwarded_to || "");
+        setAssigneeStatusDraftSummary(row.summary || "");
+    };
+
+    const cancelEditAssigneeStatus = () => {
+        setAssigneeStatusEditingId(null);
+        setAssigneeStatusDraftId(0);
+        setAssigneeStatusDraftFileName("");
+        setAssigneeStatusDraftCopiesForwardedTo("");
+        setAssigneeStatusDraftSummary("");
+    };
+
+    const draftAssigneeStatusObj = allStatuses.find(s => s.id === assigneeStatusDraftId);
+    const assigneeStatusFileNameRequired = !!draftAssigneeStatusObj?.requires_file_name;
+    const assigneeStatusCopiesForwardedRequired = !!draftAssigneeStatusObj?.requires_copies_forwarded_to;
+    const assigneeStatusSummaryRequired = !!draftAssigneeStatusObj?.requires_summary;
+
+    const handleSaveAssigneeStatus = async () => {
+        if (assigneeStatusFileNameRequired && !assigneeStatusDraftFileName.trim()) {
+            toast.error(`File Name is required when setting status to "${draftAssigneeStatusObj?.name}"`);
+            return;
+        }
+        if (assigneeStatusCopiesForwardedRequired && !assigneeStatusDraftCopiesForwardedTo.trim()) {
+            toast.error(`Copies Forwarded To is required when setting status to "${draftAssigneeStatusObj?.name}"`);
+            return;
+        }
+        if (assigneeStatusSummaryRequired && !assigneeStatusDraftSummary.trim()) {
+            toast.error(`Summary is required when setting status to "${draftAssigneeStatusObj?.name}"`);
+            return;
+        }
+        try {
+            setIsSavingAssigneeStatus(true);
+            await api.put(`/v1/letter/${id}/assignee-status`, {
+                status_id: assigneeStatusDraftId,
+                file_name: assigneeStatusFileNameRequired ? assigneeStatusDraftFileName.trim() : null,
+                copies_forwarded_to: assigneeStatusDraftCopiesForwardedTo.trim() || null,
+                summary: assigneeStatusDraftSummary.trim() || null,
+            });
+            toast.success("Your status has been updated");
+            cancelEditAssigneeStatus();
+            fetchLetter();
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to update your status");
+        } finally {
+            setIsSavingAssigneeStatus(false);
+        }
+    };
 
     const fetchRemarkHistory = useCallback(async () => {
         try {
@@ -645,8 +725,6 @@ const handleSaveAssigneeStatus = async () => {
         else if (activeTab === 'remarkLog') fetchRemarkHistory();
     }, [activeTab, fetchRemarks, fetchHistory, fetchRemarkHistory]);
 
-    // ── Warn on browser tab close / refresh while there are unsaved changes ────
-
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             if (isDirtyRef.current) {
@@ -657,8 +735,6 @@ const handleSaveAssigneeStatus = async () => {
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, []);
-
-    // ── Warn on browser Back/Forward navigation while there are unsaved changes ─
 
     useEffect(() => {
         window.history.pushState(null, '', window.location.href);
@@ -677,44 +753,12 @@ const handleSaveAssigneeStatus = async () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [router]);
 
-    // ── Save assignment ───────────────────────────────────────────────────────
-
     const handleSave = async () => {
-    if (isFileNameRequiredNow && !completionFileName.trim()) {   // CHANGED
-        toast.error(`File Name is required when setting status to "${selectedStatusObj?.name}"`);
-        return;
-    }
-    if (sendToRecommendation && !selectedRecommendedToId) {   // CHANGED — now driven by the checkbox, not the status
-        toast.error('Please select who this should be recommended to before saving.');
-        return;
-    }
-    try {
-        setIsSaving(true);
-        await api.put(`/v1/letter/assignment/${id}`, {
-            status_id: selectedStatusId,
-            department_ids: selectedDeptIds,
-            assignee_ids: selectedAssigneeIds,
-            file_name: isFileNameRequiredNow ? completionFileName.trim() : undefined,   // CHANGED
-            recommended_to_id: sendToRecommendation ? selectedRecommendedToId : null,   // CHANGED — explicit null clears it when unchecked
-            forwarded_to_id: forwardChecked ? selectedForwardedToId : null,
-        });
-        toast.success("Letter updated successfully");
-        setOriginalStatusId(selectedStatusId);
-        setOriginalDeptIds(selectedDeptIds);
-        setOriginalAssigneeIds(selectedAssigneeIds);
-        setOriginalRecommendedToId(selectedRecommendedToId);   // NEW
-        setOriginalSendToRecommendation(sendToRecommendation);   // NEW
-        fetchLetter();
-    } catch (error) {
-        toast.error(error.response?.data?.message || 'Failed to save changes');
-    } finally {
-        setIsSaving(false);
-    }
-};
-    // Used by "Save Changes and Go Back" in the unsaved-changes dialog.
-    // Saves the pending assignment changes first, then runs the queued navigation.
-    const handleSaveAndProceed = async () => {
-        if (sendToRecommendation && !selectedRecommendedToId) {   // CHANGED
+        if (isFileNameRequiredNow && !completionFileName.trim()) {
+            toast.error(`File Name is required when setting status to "${selectedStatusObj?.name}"`);
+            return;
+        }
+        if (sendToRecommendation && !selectedRecommendedToId) {
             toast.error('Please select who this should be recommended to before saving.');
             return;
         }
@@ -724,19 +768,56 @@ const handleSaveAssigneeStatus = async () => {
                 status_id: selectedStatusId,
                 department_ids: selectedDeptIds,
                 assignee_ids: selectedAssigneeIds,
-                file_name: isFileNameRequiredNow ? completionFileName.trim() : undefined,   // NEW
-                recommended_to_id: sendToRecommendation ? selectedRecommendedToId : null,   // CHANGED
+                file_name: isFileNameRequiredNow ? completionFileName.trim() : undefined,
+                recommended_to_id: sendToRecommendation ? selectedRecommendedToId : null,
                 forwarded_to_id: forwardChecked ? selectedForwardedToId : null,
+                order_by_role_id: selectedOrderByRoleId || null,
+                order_by_action_id: selectedOrderByActionId || null,
+            });
+            toast.success("Letter updated successfully");
+            setOriginalStatusId(selectedStatusId);
+            setOriginalDeptIds(selectedDeptIds);
+            setOriginalAssigneeIds(selectedAssigneeIds);
+            setOriginalRecommendedToId(selectedRecommendedToId);
+            setOriginalSendToRecommendation(sendToRecommendation);
+            setOriginalOrderByRoleId(selectedOrderByRoleId);
+            setOriginalOrderByActionId(selectedOrderByActionId);
+            fetchLetter();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to save changes');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleSaveAndProceed = async () => {
+        if (sendToRecommendation && !selectedRecommendedToId) {
+            toast.error('Please select who this should be recommended to before saving.');
+            return;
+        }
+        try {
+            setIsSaving(true);
+            await api.put(`/v1/letter/assignment/${id}`, {
+                status_id: selectedStatusId,
+                department_ids: selectedDeptIds,
+                assignee_ids: selectedAssigneeIds,
+                file_name: isFileNameRequiredNow ? completionFileName.trim() : undefined,
+                recommended_to_id: sendToRecommendation ? selectedRecommendedToId : null,
+                forwarded_to_id: forwardChecked ? selectedForwardedToId : null,
+                order_by_role_id: selectedOrderByRoleId || null,
+                order_by_action_id: selectedOrderByActionId || null,
             });
             toast.success("Letter updated successfully");
 
             setOriginalStatusId(selectedStatusId);
             setOriginalDeptIds(selectedDeptIds);
             setOriginalAssigneeIds(selectedAssigneeIds);
-            setOriginalRecommendedToId(selectedRecommendedToId);   // NEW
-            setOriginalSendToRecommendation(sendToRecommendation);   // NEW
-            setOriginalForwardedToId(selectedForwardedToId);   // NEW
-            setOriginalForwardChecked(forwardChecked);   // NEW
+            setOriginalRecommendedToId(selectedRecommendedToId);
+            setOriginalSendToRecommendation(sendToRecommendation);
+            setOriginalForwardedToId(selectedForwardedToId);
+            setOriginalForwardChecked(forwardChecked);
+            setOriginalOrderByRoleId(selectedOrderByRoleId);
+            setOriginalOrderByActionId(selectedOrderByActionId);
             setShowUnsavedDialog(false);
             const action = pendingActionRef.current;
             pendingActionRef.current = null;
@@ -749,6 +830,42 @@ const handleSaveAssigneeStatus = async () => {
         }
     };
 
+    // NEW — admin step: sends the "please confirm" request to whoever is
+// selected. Does NOT set the actual Initials By value shown in the seal —
+// that only happens once the selected person confirms below.
+const handleAssignInitialsBy = async () => {
+    try {
+        setIsAssigningInitialsBy(true);
+        await api.put(`/v1/letter/${id}/initials-by/assign`, {
+            initials_by_pending_user_id: selectedPendingCandidateId || null,
+        });
+        toast.success(selectedPendingCandidateId ? "Initials By request sent" : "Initials By request cancelled");
+        fetchLetter();
+    } catch (error) {
+        toast.error(error.response?.data?.message || "Failed to send Initials By request");
+    } finally {
+        setIsAssigningInitialsBy(false);
+    }
+};
+
+// NEW — the SELECTED candidate's own confirmation. Only enabled/usable
+// when the logged-in user is the one currently pending on this letter.
+const handleConfirmInitialsBy = async () => {
+    try {
+        setIsConfirmingInitialsBy(true);
+        await api.put(`/v1/letter/${id}/initials-by/confirm`, {
+            notes: confirmNotes.trim() || null,
+        });
+        toast.success("Initials confirmed");
+        setConfirmNotes("");
+        fetchLetter();
+    } catch (error) {
+        toast.error(error.response?.data?.message || "Failed to confirm");
+    } finally {
+        setIsConfirmingInitialsBy(false);
+    }
+};
+
     const toggleDept = (deptId: number) =>
         setSelectedDeptIds(prev => prev.includes(deptId) ? prev.filter(d => d !== deptId) : [...prev, deptId]);
 
@@ -758,8 +875,6 @@ const handleSaveAssigneeStatus = async () => {
     const handleBackToLetters = () => {
         requestNavigation(() => router.push('/letters'));
     };
-
-    // ── Remark edit handlers ────────────────────────────────────────────────
 
     const openEditRemark = (remark: Remark) => {
         setEditingRemark(remark);
@@ -795,7 +910,6 @@ const handleSaveAssigneeStatus = async () => {
             setEditContent("");
             setEditReason("");
             fetchRemarks();
-            // Keep the remark log fresh too, in case the user checks it next
             if (activeTab === 'remarkLog') fetchRemarkHistory();
         } catch (error) {
             toast.error(error.response?.data?.message || "Failed to update remark");
@@ -803,8 +917,6 @@ const handleSaveAssigneeStatus = async () => {
             setIsUpdatingRemark(false);
         }
     };
-
-    // ── Remark delete handlers ──────────────────────────────────────────────
 
     const openDeleteRemark = (remark: Remark) => {
         setDeletingRemark(remark);
@@ -840,8 +952,6 @@ const handleSaveAssigneeStatus = async () => {
         }
     };
 
-    // ── Render ────────────────────────────────────────────────────────────────
-
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-[60vh]">
@@ -863,7 +973,6 @@ const handleSaveAssigneeStatus = async () => {
 
     return (
         <div className="space-y-6">
-            {/* Unsaved changes confirmation popup */}
             <Dialog open={showUnsavedDialog} onOpenChange={(open) => { if (!open) cancelLeave(); }}>
                 <DialogContent className="sm:max-w-[460px]">
                     <DialogHeader>
@@ -903,13 +1012,11 @@ const handleSaveAssigneeStatus = async () => {
                 </DialogContent>
             </Dialog>
 
-            {/* Attachment preview modal */}
             <AttachmentPreviewDialog
                 attachment={previewAttachment}
                 onCloseAction={() => setPreviewAttachment(null)}
             />
 
-            {/* Edit Remark dialog */}
             <Dialog open={!!editingRemark} onOpenChange={(open) => { if (!open) closeEditRemark(); }}>
                 <DialogContent className="sm:max-w-[480px]">
                     <DialogHeader>
@@ -956,7 +1063,6 @@ const handleSaveAssigneeStatus = async () => {
                 </DialogContent>
             </Dialog>
 
-            {/* Delete Remark dialog */}
             <Dialog open={!!deletingRemark} onOpenChange={(open) => { if (!open) closeDeleteRemark(); }}>
                 <DialogContent className="sm:max-w-[460px]">
                     <DialogHeader>
@@ -1004,7 +1110,6 @@ const handleSaveAssigneeStatus = async () => {
                 </DialogContent>
             </Dialog>
 
-            {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold">Letter View</h1>
@@ -1031,76 +1136,132 @@ const handleSaveAssigneeStatus = async () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-                {/* ── Left panel ───────────────────────────────────────────── */}
                 <div className="space-y-4">
-                    {/* Letter details */}
                     <Card>
                         <CardContent className="pt-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-5">
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Code</p>
-                                    <p className="font-semibold mt-0.5">{letter.code}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Sender's Address</p>
-                                    <p className="font-semibold mt-0.5">{letter.sender || "—"}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Subject / Content</p>
-                                    <p className="font-semibold mt-0.5">{letter.subject}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Sender / Organization</p>
-                                    <p className="font-semibold mt-0.5">{letter.organization?.name || "—"}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Source</p>
-                                    <p className="font-semibold mt-0.5">{letter.source?.name || "—"}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Email</p>
-                                    <p className="font-semibold mt-0.5">{letter.email || "N/A"}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Received Date</p>
-                                    <p className="font-semibold mt-0.5">{formatDate(letter.received_datetime)}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">Telephone</p>
-                                    <p className="font-semibold mt-0.5">{letter.telephone || "N/A"}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-muted-foreground">System Date</p>
-                                    <p className="font-semibold mt-0.5">{formatDate(letter.create_datetime)}</p>
-                                </div>
-                                {letter.sender_subject_no && (
-                                    <div>
-                                        <p className="text-sm text-muted-foreground">Sender's Subject No</p>
-                                        <p className="font-semibold mt-0.5">{letter.sender_subject_no}</p>
-                                    </div>
-                                )}
-                                {letter.registered_post_no && (
-                                    <div>
-                                        <p className="text-sm text-muted-foreground">Registered Postal Number</p>
-                                        <p className="font-semibold mt-0.5">{letter.registered_post_no}</p>
-                                    </div>
-                                )}
-                                {letter.other && (
-                                    <div className="md:col-span-2">
-                                        <p className="text-sm text-muted-foreground">Cheque No / Money Order No</p>
-                                        <p className="font-semibold mt-0.5">{letter.other}</p>
-                                    </div>
-                                )}
-                                {/* NEW — completion file name, shown whenever a status that required
-                                    a file name was saved with one attached. Kept visible regardless
-                                    of which status is currently selected, so the historical record
-                                    of "what file this was completed/filed under" is never hidden. */}
-                                {letter.completion_file_name && (
-                                    <div className="md:col-span-2">
-                                        <p className="text-sm text-muted-foreground">File Name</p>
-                                        <p className="font-semibold mt-0.5">{letter.completion_file_name}</p>
-                                    </div>
-                                )}
+                                
+
+    {/* Initials By — left */}
+    {letter.initials_by && (
+        <div>
+            <p className="text-sm text-muted-foreground mb-2">Initials By</p>
+            <div className="inline-block border-2 border-slate-400 dark:border-slate-500 rounded-sm px-6 py-4 text-slate-700 dark:text-slate-300">
+                <div className="flex items-baseline gap-2 flex-wrap text-sm">
+                    <span className="font-semibold">{letter.initials_by.name}</span>
+                    {letter.initials_by_notes && (
+                        <span className="text-xs italic text-slate-500 dark:text-slate-400">
+                            ({letter.initials_by_notes})
+                        </span>
+                    )}
+                </div>
+            </div>
+        </div>
+    )}
+
+    {/* Ordered By — right */}
+    {(letter.order_by_role || letter.order_by_action) && (
+        <div>
+            <p className="text-sm text-muted-foreground mb-2">Ordered By</p>
+            <div
+                className="inline-block border-2 border-purple-700 dark:border-purple-400 rounded-sm px-6 py-4 text-purple-800 dark:text-purple-300"
+                style={{fontFamily: 'Georgia, serif'}}
+            >
+                <div className="flex items-baseline gap-2 flex-wrap text-sm justify-center">
+                    {letter.order_by_role && (
+                        <span className="font-semibold">{letter.order_by_role.name}</span>
+                    )}
+                    {letter.order_by_role && letter.order_by_action && <span>/</span>}
+                    {letter.order_by_action && (
+                        <span>{letter.order_by_action.name}</span>
+                    )}
+                </div>
+                <div className="border-t-2 border-purple-700 dark:border-purple-400 mt-3 pt-2 text-center text-sm font-semibold whitespace-nowrap">
+                    සමූපකාර සංවර්ධන කොමසාරිස් හා සමිති රෙජිස්ට්‍රාර්
+                </div>
+            </div>
+        </div>
+    )}
+
+    {/* CHANGED — everything below is now ordered to match the Insert Letter
+        form field-by-field, so Letter View shows exactly what was entered,
+        in the same sequence it was entered in. */}
+
+    <div>
+        <p className="text-sm text-muted-foreground">Received Date</p>
+        <p className="font-semibold mt-0.5">{formatDate(letter.received_datetime)}</p>
+    </div>
+    <div>
+        <p className="text-sm text-muted-foreground">Code</p>
+        <p className="font-semibold mt-0.5">{letter.code}</p>
+    </div>
+    <div>
+        <p className="text-sm text-muted-foreground">Source</p>
+        <p className="font-semibold mt-0.5">{letter.source?.name || "—"}</p>
+    </div>
+    <div>
+        <p className="text-sm text-muted-foreground">Sender / Organization</p>
+        <p className="font-semibold mt-0.5">{letter.organization?.name || "—"}</p>
+    </div>
+    {letter.registered_post_no && (
+        <div>
+            <p className="text-sm text-muted-foreground">Registered Postal Number</p>
+            <p className="font-semibold mt-0.5">{letter.registered_post_no}</p>
+        </div>
+    )}
+    <div>
+        <p className="text-sm text-muted-foreground">Sender's Address</p>
+        <p className="font-semibold mt-0.5">{letter.sender || "—"}</p>
+    </div>
+    <div>
+        <p className="text-sm text-muted-foreground">Sender's Email</p>
+        <p className="font-semibold mt-0.5">{letter.email || "N/A"}</p>
+    </div>
+    <div>
+        <p className="text-sm text-muted-foreground">Sender's Telephone</p>
+        <p className="font-semibold mt-0.5">{letter.telephone || "N/A"}</p>
+    </div>
+    {letter.other && (
+        <div className="md:col-span-2">
+            <p className="text-sm text-muted-foreground">Cheque No / Money Order No</p>
+            <p className="font-semibold mt-0.5">{letter.other}</p>
+        </div>
+    )}
+    {letter.sender_subject_no && (
+        <div>
+            <p className="text-sm text-muted-foreground">Sender's Subject No</p>
+            <p className="font-semibold mt-0.5">{letter.sender_subject_no}</p>
+        </div>
+    )}
+    <div className="md:col-span-2">
+        <p className="text-sm text-muted-foreground">Subject / Content</p>
+        <p className="font-semibold mt-0.5 whitespace-pre-wrap">{letter.subject}</p>
+    </div>
+
+    {/* NEW — was captured on Insert Letter but never shown on Letter View */}
+    <div>
+        <p className="text-sm text-muted-foreground">Is this a Public Complaint? (මහජන පැමිණිල්ලක්ද?)</p>
+        <p className="font-semibold mt-0.5">{letter.is_public_complaint ? "Yes" : "No"}</p>
+    </div>
+
+    {/* System-generated fields — not part of the Insert Letter form itself,
+        kept at the end since they only exist after the letter is created. */}
+    <div>
+        <p className="text-sm text-muted-foreground">System Date</p>
+        <p className="font-semibold mt-0.5">{formatDate(letter.create_datetime)}</p>
+    </div>
+    {letter.completion_file_name && (
+        <div className="md:col-span-2">
+            <p className="text-sm text-muted-foreground">File Name</p>
+            <p className="font-semibold mt-0.5">{letter.completion_file_name}</p>
+        </div>
+    )}
+
+
+                                
+                               
+                                
+
                               {letter.other && (
                                             <>
                                                 <Separator className="my-5"/>
@@ -1111,18 +1272,6 @@ const handleSaveAssigneeStatus = async () => {
                                                                 id="cheque-deposited"
                                                                 checked={chequeDeposited}
                                                                 onCheckedChange={(checked) => setChequeDeposited(!!checked)}
-                                                                // FIXED — previously this was disabled whenever `isEditingCheque`
-                                                                // was false, but the "Edit" button that turns `isEditingCheque`
-                                                                // on only renders once `letter.cheque_deposited` is already true
-                                                                // (see the button just below). On a brand new letter that had
-                                                                // never been saved, that meant the checkbox could never be
-                                                                // clicked at all. Now it's only locked once a deposit has
-                                                                // already been saved and the user isn't actively editing it.
-                                                                // CHANGED — this now checks the exact same permission code
-                                                                // ('letter.cheque_update') that was created via Manage
-                                                                // Permissions. It previously checked 'letter.update_cheque'
-                                                                // (words swapped), which never matched any real permission
-                                                                // code, so this control was permanently disabled for everyone.
                                                                 disabled={!hasPermission('letter.cheque_update') || (letter.cheque_deposited && !isEditingCheque)}
                                                             />
                                                             <label htmlFor="cheque-deposited" className="text-sm font-medium cursor-pointer">
@@ -1142,7 +1291,6 @@ const handleSaveAssigneeStatus = async () => {
                                                         )}
                                                     </div>
 
-                                                    {/* Editable form — shown when not yet saved, or when Edit was clicked */}
                                                     {(isEditingCheque || !letter.cheque_deposited) && chequeDeposited && (
                                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-6">
                                                             <div>
@@ -1172,7 +1320,6 @@ const handleSaveAssigneeStatus = async () => {
                                                         </div>
                                                     )}
 
-                                                    {/* Save / Cancel — only while actively editing (first-time entry or Edit clicked) */}
                                                     {hasPermission('letter.cheque_update') && (isEditingCheque || !letter.cheque_deposited) && (
                                                         <div className="flex gap-2">
                                                             <Button size="sm" onClick={handleSaveCheque} disabled={isSavingCheque}>
@@ -1184,7 +1331,6 @@ const handleSaveAssigneeStatus = async () => {
                                                                     size="sm"
                                                                     variant="outline"
                                                                     onClick={() => {
-                                                                        // revert unsaved edits back to the last saved values
                                                                         setChequeDeposited(!!letter.cheque_deposited);
                                                                         setChequeDepositDate(letter.cheque_deposit_date ? letter.cheque_deposit_date.slice(0, 10) : "");
                                                                         setChequeAccountNo(letter.cheque_account_no || "");
@@ -1199,7 +1345,6 @@ const handleSaveAssigneeStatus = async () => {
                                                         </div>
                                                     )}
 
-                                                    {/* Read-only summary — shown whenever saved data exists and we're not editing */}
                                                     {letter.cheque_deposited && !isEditingCheque && (
                                                         <div className="border rounded-md p-3 space-y-1 bg-muted/20">
                                                             <p className="text-xs font-medium text-muted-foreground mb-1">Saved deposit details</p>
@@ -1217,7 +1362,6 @@ const handleSaveAssigneeStatus = async () => {
 
                             </div>        
 
-                            {/* Attachments — preview + download, no page navigation */}
                             {letter.attachments && letter.attachments.length > 0 && (
                                 <>
                                     <Separator className="my-5"/>
@@ -1240,7 +1384,6 @@ const handleSaveAssigneeStatus = async () => {
                         </CardContent>
                     </Card>
 
-                    {/* Remarks / Letter History / Remark Log tabs */}
                     <Card>
                         <CardHeader className="pb-0 pt-5 px-5">
                             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1263,7 +1406,7 @@ const handleSaveAssigneeStatus = async () => {
                                             </span>
                                         )}
                                     </button>
-                                    
+
                                     <button
                                         onClick={() => setActiveTab('history')}
                                         className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
@@ -1274,7 +1417,6 @@ const handleSaveAssigneeStatus = async () => {
                                     >
                                         Letter History
                                     </button>
-                                    {/* NEW — Remark Log tab */}
                                     <button
                                         onClick={() => setActiveTab('remarkLog')}
                                         className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
@@ -1289,9 +1431,8 @@ const handleSaveAssigneeStatus = async () => {
                                 {activeTab === 'remarks' && (
                                     <InsertRemarkModal
                                         letter_id={id}
-                                        onSuccess={() => { fetchRemarks(); fetchLetter(); }}  
+                                        onSuccess={() => { fetchRemarks(); fetchLetter(); }}
                                     />
- 
                                 )}
                             </div>
                         </CardHeader>
@@ -1394,7 +1535,6 @@ const handleSaveAssigneeStatus = async () => {
                                 )
                             )}
 
-                            {/* NEW — Remark Log content: who edited/deleted what remark, and why */}
                             {activeTab === 'remarkLog' && (
                                 remarkHistoryLoading ? (
                                     <div className="flex justify-center py-10">
@@ -1469,68 +1609,9 @@ const handleSaveAssigneeStatus = async () => {
                     </Card>
                 </div>
 
-                {/* ── Right panel ───────────────────────────────────────────── */}
                 <div className="space-y-4">
                     <Card>
                         <CardContent className="pt-6 space-y-5">
-                            {/* Status */}
-{/* <div className="space-y-2">
-    <p className="text-sm font-medium">Status</p>
-    <Select
-    value={selectedStatusId ? selectedStatusId.toString() : ""}
-    onValueChange={(v) => setSelectedStatusId(parseInt(v) || 0)}
-    disabled={!hasPermission('letter.change_status')}   // CHANGED
->
-        <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select Status"/>
-        </SelectTrigger>
-        <SelectContent>
-            {allStatuses
-                .filter(s =>
-                    !allowedStatusIds?.length ||               // no restriction set → show all
-                    allowedStatusIds.includes(s.id) ||          // status this role is allowed to set
-                    s.id === selectedStatusId                   // always show the letter's current status, even if not settable
-                )
-                .map(s => (
-                    <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
-                ))}
-        </SelectContent>
-    </Select>
-    {isFileNameRequiredNow && (
-    <div className="space-y-1 pt-1">
-        <label className="text-xs font-medium text-muted-foreground">
-            File Name <span className="text-destructive">*</span>
-        </label>
-        <input
-            type="text"
-            value={completionFileName}
-            onChange={(e) => setCompletionFileName(e.target.value)}
-            placeholder={`Enter the file name for status "${selectedStatusObj?.name}"`}
-            className="w-full rounded-md border px-3 py-2 text-sm"
-        />
-    </div>
-)}
-                {letter.status && (
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusClassName(letter.status.name)}`}>
-                    Current: {letter.status.name}
-                </span>
-            )}
-            {typeof letter.status_days === 'number' && (
-                <p className="text-xs text-muted-foreground">
-                    {letter.status_days} day{letter.status_days !== 1 ? 's' : ''} in this status
-                </p>
-            )}
-            
-            {letter.completion_file_name && (
-                <p className="text-xs text-muted-foreground">
-                    File Name: <span className="font-medium text-foreground">{letter.completion_file_name}</span>
-                </p>
-            )}
-</div>
-
-                            <Separator/> */}
-
-                            {/* Departments */}
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <p className="text-sm font-medium">Departments</p>
@@ -1547,48 +1628,46 @@ const handleSaveAssigneeStatus = async () => {
                                     )}
                                 </div>
                                 {selectedDeptIds.length > 0 ? (
-    <div className="flex flex-wrap gap-1">
-        {selectedDeptIds.map(accId => {
-            const da = departmentAccounts.find(d => d.id === accId);   // CHANGED
-            return da ? (
-                <Badge key={accId} variant="secondary" className="text-xs gap-1">
-                    {da.department_unit_name || da.department_name}
-                    {hasPermission('letter.change_department') && isEditingDepts && (
-                        <button onClick={() => toggleDept(accId)} className="ml-0.5 hover:text-destructive">
-                            <X className="h-3 w-3"/>
-                        </button>
-                    )}
-                </Badge>
-            ) : null;
-        })}
-    </div>
-) : (
-    <p className="text-sm text-muted-foreground">No departments assigned</p>
-)}
-{isEditingDepts && (
-    <div className="border rounded-md p-3 grid grid-cols-1 gap-2 max-h-44 overflow-y-auto">
-        {departmentAccounts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No department accounts have been created yet</p>
-        ) : departmentAccounts.map(da => (
-            <div key={da.id} className="flex items-center space-x-2">
-                <Checkbox
-                    id={`dept-${da.id}`}
-                    checked={selectedDeptIds.includes(da.id)}          // CHANGED
-                    onCheckedChange={() => toggleDept(da.id)}          // CHANGED
-                    disabled={!hasPermission('letter.change_department')}
-                />
-                <label htmlFor={`dept-${da.id}`} className="text-sm cursor-pointer leading-tight">
-                    {da.department_unit_name || da.department_name}
-                </label>
-            </div>
-        ))}
-    </div>
-)}
-                                                                
+                                    <div className="flex flex-wrap gap-1">
+                                        {selectedDeptIds.map(accId => {
+                                            const da = departmentAccounts.find(d => d.id === accId);
+                                            return da ? (
+                                                <Badge key={accId} variant="secondary" className="text-xs gap-1">
+                                                    {da.department_unit_name || da.department_name}
+                                                    {hasPermission('letter.change_department') && isEditingDepts && (
+                                                        <button onClick={() => toggleDept(accId)} className="ml-0.5 hover:text-destructive">
+                                                            <X className="h-3 w-3"/>
+                                                        </button>
+                                                    )}
+                                                </Badge>
+                                            ) : null;
+                                        })}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">No departments assigned</p>
+                                )}
+                                {isEditingDepts && (
+                                    <div className="border rounded-md p-3 grid grid-cols-1 gap-2 max-h-44 overflow-y-auto">
+                                        {departmentAccounts.length === 0 ? (
+                                            <p className="text-sm text-muted-foreground">No department accounts have been created yet</p>
+                                        ) : departmentAccounts.map(da => (
+                                            <div key={da.id} className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id={`dept-${da.id}`}
+                                                    checked={selectedDeptIds.includes(da.id)}
+                                                    onCheckedChange={() => toggleDept(da.id)}
+                                                    disabled={!hasPermission('letter.change_department')}
+                                                />
+                                                <label htmlFor={`dept-${da.id}`} className="text-sm cursor-pointer leading-tight">
+                                                    {da.department_unit_name || da.department_name}
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                             <Separator/>
 
-                            {/* Assignees */}
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <p className="text-sm font-medium">Assignees</p>
@@ -1607,11 +1686,14 @@ const handleSaveAssigneeStatus = async () => {
                                 {selectedAssigneeIds.length > 0 ? (
                                     <div className="flex flex-wrap gap-1">
                                         {selectedAssigneeIds.map(assigneeId => {
-                                            const assignee = allAssignees.find(a => a.id === assigneeId);
+                                            // const assignee = allAssignees.find(a => a.id === assigneeId);
+                                            const assignee = letter.assignees.find(a => a.id === assigneeId)
+                                                       || allAssignees.find(a => a.id === assigneeId);
+                                                       const isSelf = assigneeId === user?.id;  
                                             return assignee ? (
                                                 <Badge key={assigneeId} variant="secondary" className="text-xs gap-1">
                                                     {assignee.name}
-                                                    {hasPermission('letter.assign') && isEditingAssignees && (
+                                                    {hasPermission('letter.assign') && isEditingAssignees && !isSelf && (
                                                         <button onClick={() => toggleAssignee(assigneeId)} className="ml-0.5 hover:text-destructive">
                                                             <X className="h-3 w-3"/>
                                                         </button>
@@ -1625,8 +1707,6 @@ const handleSaveAssigneeStatus = async () => {
                                 )}
                                 {isEditingAssignees && (
                                     <div className="space-y-2 border rounded-md p-3">
-                                        {/* NEW — narrow down a long assignee list by Department, then
-                                            Sub-Unit (if that department has any), plus free-text search */}
                                         <div className="grid grid-cols-1 gap-2">
                                             <Select
                                                 value={assigneeDeptFilter ? assigneeDeptFilter.toString() : "0"}
@@ -1674,10 +1754,13 @@ const handleSaveAssigneeStatus = async () => {
                                                         id={`assignee-${a.id}`}
                                                         checked={selectedAssigneeIds.includes(a.id)}
                                                         onCheckedChange={() => toggleAssignee(a.id)}
-                                                        disabled={!hasPermission('letter.assign')}
+                                                        disabled={!hasPermission('letter.assign') || a.id === user?.id}
                                                     />
                                                     <label htmlFor={`assignee-${a.id}`} className="text-sm cursor-pointer leading-tight">
                                                         {a.name}
+                                                         {a.id === user?.id && (
+                                                           <span className="text-xs text-muted-foreground ml-1">(you)</span>
+                                                       )}
                                                     </label>
                                                 </div>
                                             ))}
@@ -1686,245 +1769,399 @@ const handleSaveAssigneeStatus = async () => {
                                 )}
                             </div>
 
-
-                            {letter.assignee_statuses && letter.assignee_statuses.length > 0 && (
+                           {/* CHANGED — Initials By is now a two-step handoff:
+    1) admin (letter.initials_by_manage) picks WHO should confirm
+    2) that SAME person (letter.initials_by, and only for their own
+       pending request) adds optional notes and clicks OK
+    Only step 2 actually sets what shows in the seal block. */}
+{(hasPermission('letter.initials_by_manage') || hasPermission('letter.initials_by') || letter.initials_by || letter.initials_by_pending) && (
     <>
         <Separator/>
-        <div className="space-y-2">
-            <p className="text-sm font-medium">Assignee Statuses</p>
-            <p className="text-xs text-muted-foreground -mt-1">
-                Each assignee tracks their own progress. You can only change your own status.
-            </p>
-            <div className="space-y-2">
-                {letter.assignee_statuses.map((row) => {
-                    const isEditingThisRow = assigneeStatusEditingId === row.assignee_id;
-                    return (
-                        <div key={row.assignee_id} className="border rounded-md p-3 space-y-2">
-                            <div className="flex items-center justify-between gap-2">
-                                <span className="text-sm font-medium">{row.assignee_name}</span>
-                                {row.can_edit && !isEditingThisRow && (
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-6 px-2 text-xs"
-                                        onClick={() => openEditAssigneeStatus(row)}
-                                    >
-                                        <Pencil className="mr-1 h-3 w-3"/>Update
-                                    </Button>
-                                )}
-                            </div>
- 
-                            {isEditingThisRow ? (
-                                <div className="space-y-2">
-                                    <Select
-                                        value={assigneeStatusDraftId ? assigneeStatusDraftId.toString() : ""}
-                                        onValueChange={(v) => setAssigneeStatusDraftId(parseInt(v) || 0)}
-                                    >
-                                        <SelectTrigger className="h-8 text-xs">
-                                            <SelectValue placeholder="Select Status"/>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {allStatuses
-                                                .filter(s =>
-                                                    !allowedStatusIds?.length ||
-                                                    allowedStatusIds.includes(s.id) ||
-                                                    s.id === row.status_id
-                                                )
-                                                .map(s => (
-                                                    <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
-                                                ))}
-                                        </SelectContent>
-                                    </Select>
- 
-                                    {assigneeStatusFileNameRequired && (
-                                        <input
-                                            type="text"
-                                            value={assigneeStatusDraftFileName}
-                                            onChange={(e) => setAssigneeStatusDraftFileName(e.target.value)}
-                                            placeholder={`File name for "${draftAssigneeStatusObj?.name}"`}
-                                            className="w-full rounded-md border px-2 h-8 text-xs"
-                                        />
-                                    )}
- 
-                                    <div className="flex gap-2">
-                                        <Button
-                                            size="sm"
-                                            className="h-7 px-2 text-xs"
-                                            onClick={handleSaveAssigneeStatus}
-                                            disabled={isSavingAssigneeStatus}
-                                        >
-                                            {isSavingAssigneeStatus ? (
-                                                <><Loader2 className="mr-1 h-3 w-3 animate-spin"/>Saving...</>
-                                            ) : "Save"}
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-7 px-2 text-xs"
-                                            onClick={cancelEditAssigneeStatus}
-                                            disabled={isSavingAssigneeStatus}
-                                        >
-                                            Cancel
-                                        </Button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-0.5">
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusClassName(row.status_name)}`}>
-                                        {row.status_name}
-                                    </span>
-                                    {row.file_name && (
-                                        <p className="text-xs text-muted-foreground">
-                                            File Name: <span className="font-medium text-foreground">{row.file_name}</span>
-                                        </p>
-                                    )}
-                                    {typeof row.status_days === 'number' && (
-                                        <p className="text-xs text-muted-foreground">
-                                            {row.status_days} day{row.status_days !== 1 ? 's' : ''} in this status
-                                        </p>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
+        <div className="space-y-3">
+            <p className="text-sm font-medium">Initials By</p>
+
+            {/* Step 1 — admin picks the candidate */}
+            {hasPermission('letter.initials_by_manage') && (
+                <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">Send for confirmation to</p>
+                    <div className="flex gap-2">
+                        <Select
+                            value={selectedPendingCandidateId ? selectedPendingCandidateId.toString() : ""}
+                            onValueChange={(v) => setSelectedPendingCandidateId(parseInt(v) || 0)}
+                        >
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select who should confirm this"/>
+                            </SelectTrigger>
+                            <SelectContent>
+                                {initialsByCandidates.map(c => (
+                                    <SelectItem key={c.id} value={c.id.toString()}>
+                                        {c.name}{c.is_default ? ' (default)' : ''}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Button
+                            size="sm"
+                            className="h-9 px-3 text-xs shrink-0"
+                            onClick={handleAssignInitialsBy}
+                            disabled={isAssigningInitialsBy || selectedPendingCandidateId === (letter.initials_by_pending?.id || 0)}
+                        >
+                            {isAssigningInitialsBy ? <Loader2 className="h-3 w-3 animate-spin"/> : "Send"}
+                        </Button>
+                    </div>
+                    {letter.initials_by_pending && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                            Awaiting confirmation from {letter.initials_by_pending.name}
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {/* Step 2 — the selected candidate confirms (only visible to them) */}
+            {hasPermission('letter.initials_by') && letter.initials_by_pending?.id === user?.id && (
+                <div className="border rounded-md p-3 space-y-2 bg-amber-50/50 dark:bg-amber-950/20">
+                    <p className="text-xs font-medium">This letter is waiting for your initials confirmation</p>
+                    <textarea
+                        value={confirmNotes}
+                        onChange={(e) => setConfirmNotes(e.target.value)}
+                        rows={2}
+                        placeholder="Notes (optional)"
+                        className="w-full rounded-md border px-2 py-1.5 text-xs resize-none"
+                    />
+                    <Button
+                        size="sm"
+                        className="h-7 px-3 text-xs"
+                        onClick={handleConfirmInitialsBy}
+                        disabled={isConfirmingInitialsBy}
+                    >
+                        {isConfirmingInitialsBy ? <><Loader2 className="mr-1 h-3 w-3 animate-spin"/>Saving...</> : "OK"}
+                    </Button>
+                </div>
+            )}
+
+            {/* Confirmed value — this is what actually shows in the seal block */}
+            {letter.initials_by ? (
+                <div className="space-y-0.5">
+                    <Badge variant="secondary" className="text-xs">{letter.initials_by.name}</Badge>
+                    {letter.initials_by_notes && (
+                        <p className="text-xs text-muted-foreground">{letter.initials_by_notes}</p>
+                    )}
+                </div>
+            ) : !letter.initials_by_pending ? (
+                <p className="text-xs text-muted-foreground">Not yet requested</p>
+            ) : null}
         </div>
     </>
 )}
-                            {/* NEW — Forwarded Section */}
-                                    {/* <Separator/>
-                                    <div className="flex items-center space-x-2">
-                                        <Checkbox
-                                            id="forward-letter"
-                                            checked={forwardChecked}
-                                            onCheckedChange={(checked) => {
-                                                setForwardChecked(!!checked);
-                                                if (!checked) setSelectedForwardedToId(0); // clear the pick when unchecked
-                                            }}
-                                            disabled={!hasPermission('letter.forward')}
-                                        />
-                                        <label htmlFor="forward-letter" className="text-sm font-medium cursor-pointer">
-                                            Forwarded
-                                        </label>
-                                    </div>
-                                    
-                                    {(forwardChecked || letter.forwarded_to) && (
-                                        <div className="space-y-2">
-                                            <p className="text-sm font-medium">Forwarded To</p>
-                                            {forwardChecked && hasPermission('letter.forward') ? (
+
+                            {/* CHANGED — Order By now shows TWO pickers: Role
+                                (නි.කො / ස.කො) and Action (කරු. ඉදිරි කටයුතු සඳහා,
+                                etc). Both are independent lists that whoever holds
+                                letter.order_by can pick from, and each has its own
+                                "+ Add a missing option" inline form. */}
+                            {(hasPermission('letter.order_by') || letter.order_by_role || letter.order_by_action) && (
+                                <>
+                                    <Separator/>
+                                    <div className="space-y-4">
+                                        <p className="text-sm font-medium">Order By</p>
+
+                                        {hasPermission('letter.order_by') ? (
+                                            <>
+                                                {/* Role picker: නි.කො / ස.කො */}
                                                 <div className="space-y-2">
-                                                    <div className="grid grid-cols-1 gap-2">
-                                                        <Select
-                                                            value={forwardDeptFilter ? forwardDeptFilter.toString() : "0"}
-                                                            onValueChange={(v) => {
-                                                                const deptId = parseInt(v) || 0;
-                                                                setForwardDeptFilter(deptId);
-                                                                const stillValid = allAssignees.find(a =>
-                                                                    a.id === selectedForwardedToId &&
-                                                                    (!deptId || a.department_id === deptId)
-                                                                );
-                                                                if (!stillValid) setSelectedForwardedToId(0);
-                                                            }}
-                                                        >
-                                                            <SelectTrigger className="h-8 text-xs">
-                                                                <SelectValue placeholder="Filter by department"/>
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="0">All sections</SelectItem>
-                                                                {allDepartments.map(d => (
-                                                                    <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                        <Select
-                                                            value={forwardUnitFilter ? forwardUnitFilter.toString() : "0"}
-                                                            onValueChange={(v) => {
-                                                                const unitId = parseInt(v) || 0;
-                                                                setForwardUnitFilter(unitId);
-                                                                const stillValid = allAssignees.find(a =>
-                                                                    a.id === selectedForwardedToId &&
-                                                                    (!unitId || a.department_unit_id === unitId)
-                                                                );
-                                                                if (!stillValid) setSelectedForwardedToId(0);
-                                                            }}
-                                                            disabled={!forwardDeptFilter || forwardUnits.length === 0}
-                                                        >
-                                                            <SelectTrigger className="h-8 text-xs">
-                                                                <SelectValue placeholder={forwardUnits.length === 0 ? "No sub-units" : "Filter by sub-unit"}/>
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="0">All sub-units</SelectItem>
-                                                                {forwardUnits.map(u => (
-                                                                    <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
+                                                    <p className="text-xs text-muted-foreground">Role</p>
                                                     <Select
-                                                        value={selectedForwardedToId ? selectedForwardedToId.toString() : ""}
-                                                        onValueChange={(v) => setSelectedForwardedToId(parseInt(v) || 0)}
+                                                        value={selectedOrderByRoleId ? selectedOrderByRoleId.toString() : ""}
+                                                        onValueChange={(v) => setSelectedOrderByRoleId(parseInt(v) || 0)}
                                                     >
                                                         <SelectTrigger className="w-full">
-                                                            <SelectValue placeholder="Select who to forward this to"/>
+                                                            <SelectValue placeholder="Select role (නි.කො / ස.කො)"/>
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            {filteredForwardAssignees.length === 0 ? (
-                                                                <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                                                                    No system users match this filter
-                                                                </div>
-                                                            ) : filteredForwardAssignees.map(a => (
-                                                                <SelectItem key={a.id} value={a.id.toString()}>{a.name}</SelectItem>
+                                                            {orderByRoleOptions.map(o => (
+                                                                <SelectItem key={o.id} value={o.id.toString()}>{o.name}</SelectItem>
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
+                                                    {isAddingRole ? (
+                                                        <div className="flex gap-2">
+                                                            <input
+                                                                type="text"
+                                                                value={newRoleName}
+                                                                onChange={(e) => setNewRoleName(e.target.value)}
+                                                                placeholder="e.g. නි.කො"
+                                                                className="flex-1 rounded-md border px-2 h-8 text-xs"
+                                                            />
+                                                            <Button size="sm" className="h-8 px-2 text-xs" onClick={handleAddRole} disabled={isSavingRole}>
+                                                                {isSavingRole ? <Loader2 className="h-3 w-3 animate-spin"/> : "Add"}
+                                                            </Button>
+                                                            <Button size="sm" variant="outline" className="h-8 px-2 text-xs" onClick={() => { setIsAddingRole(false); setNewRoleName(""); }} disabled={isSavingRole}>
+                                                                Cancel
+                                                            </Button>
+                                                        </div>
+                                                    ) : (
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-7 px-2 text-xs"
+                                                            onClick={() => setIsAddingRole(true)}
+                                                        >
+                                                            + Add a missing role
+                                                        </Button>
+                                                    )}
                                                 </div>
-                                            ) : letter.forwarded_to ? (
-                                                <Badge variant="secondary" className="text-xs">
-                                                    Forwarded to: {letter.forwarded_to.name}
-                                                </Badge>
-                                            ) : (
-                                                <p className="text-sm text-muted-foreground">Not yet selected</p>
-                                            )}
-                                        </div>
-                                    )} */}
 
-                            {/* NEW — Recommended To: entirely separate from Assignees, so
-                                choosing who to recommend the letter to never removes or
-                                overwrites who it's actually assigned to. Editable only
-                                while "Recommendation" is the selected status; the current
-                                saved value stays visible afterwards as a record of who it
-                                was sent to. */}
-                                 <div className="flex items-center space-x-2">
-                                 <Checkbox
-        id="send-to-recommendation"
-        checked={sendToRecommendation}
-        onCheckedChange={(checked) => setSendToRecommendation(!!checked)}
-        disabled={!hasPermission('letter.recommend')}
-    />
-    <label htmlFor="send-to-recommendation" className="text-sm font-medium cursor-pointer">
-        Send to Recommendation
-    </label>
-</div>
-                            {(sendToRecommendation || letter.recommended_to) && ( 
+                                                {/* Action picker: කරු. ඉදිරි කටයුතු සඳහා, etc */}
+                                                <div className="space-y-2">
+                                                    <p className="text-xs text-muted-foreground">Action</p>
+                                                    <Select
+                                                        value={selectedOrderByActionId ? selectedOrderByActionId.toString() : ""}
+                                                        onValueChange={(v) => setSelectedOrderByActionId(parseInt(v) || 0)}
+                                                    >
+                                                        <SelectTrigger className="w-full">
+                                                            <SelectValue placeholder="Select action (කරු. ...)"/>
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {orderByActionOptions.map(o => (
+                                                                <SelectItem key={o.id} value={o.id.toString()}>{o.name}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    {isAddingAction ? (
+                                                        <div className="flex gap-2">
+                                                            <input
+                                                                type="text"
+                                                                value={newActionName}
+                                                                onChange={(e) => setNewActionName(e.target.value)}
+                                                                placeholder="e.g. කරු. ඉදිරි කටයුතු සඳහා"
+                                                                className="flex-1 rounded-md border px-2 h-8 text-xs"
+                                                            />
+                                                            <Button size="sm" className="h-8 px-2 text-xs" onClick={handleAddAction} disabled={isSavingAction}>
+                                                                {isSavingAction ? <Loader2 className="h-3 w-3 animate-spin"/> : "Add"}
+                                                            </Button>
+                                                            <Button size="sm" variant="outline" className="h-8 px-2 text-xs" onClick={() => { setIsAddingAction(false); setNewActionName(""); }} disabled={isSavingAction}>
+                                                                Cancel
+                                                            </Button>
+                                                        </div>
+                                                    ) : (
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-7 px-2 text-xs"
+                                                            onClick={() => setIsAddingAction(true)}
+                                                        >
+                                                            + Add a missing action
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="flex flex-wrap gap-1">
+                                                {letter.order_by_role && (
+                                                    <Badge variant="secondary" className="text-xs">{letter.order_by_role.name}</Badge>
+                                                )}
+                                                {letter.order_by_action && (
+                                                    <Badge variant="secondary" className="text-xs">{letter.order_by_action.name}</Badge>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+
+                            {letter.assignee_statuses && letter.assignee_statuses.length > 0 && (
+                                <>
+                                    <Separator/>
+                                    <div className="space-y-2">
+                                        <p className="text-sm font-medium">Assignee Statuses</p>
+                                        <p className="text-xs text-muted-foreground -mt-1">
+                                            Each assignee tracks their own progress. You can only change your own status.
+                                        </p>
+                                        <div className="space-y-2">
+                                            {letter.assignee_statuses.map((row) => {
+                                                const isEditingThisRow = assigneeStatusEditingId === row.assignee_id;
+                                                return (
+                                                    <div key={row.assignee_id} className="border rounded-md p-3 space-y-2">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-sm font-medium">{row.assignee_name}</span>
+                                                            
+                                                            {row.can_edit && !isEditingThisRow && (
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-6 px-2 text-xs"
+                                                                    onClick={() => openEditAssigneeStatus(row)}
+                                                                >
+                                                                    <Pencil className="mr-1 h-3 w-3"/>Update
+                                                                </Button>
+                                                            )}
+                                                        </div>
+
+                                                        {isEditingThisRow ? (
+                                                            <div className="space-y-2">
+                                                                <Select
+                                                                    value={assigneeStatusDraftId ? assigneeStatusDraftId.toString() : ""}
+                                                                    onValueChange={(v) => setAssigneeStatusDraftId(parseInt(v) || 0)}
+                                                                >
+                                                                    <SelectTrigger className="h-8 text-xs">
+                                                                        <SelectValue placeholder="Select Status"/>
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        {allStatuses
+                                                                            .filter(s =>
+                                                                                !allowedStatusIds?.length ||
+                                                                                allowedStatusIds.includes(s.id) ||
+                                                                                s.id === row.status_id
+                                                                            )
+                                                                            .map(s => (
+                                                                                <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
+                                                                            ))}
+                                                                    </SelectContent>
+                                                                </Select>
+
+                                                                {assigneeStatusFileNameRequired && (
+                                                                    myManagedFiles.length > 0 ? (
+                                                                        <Select
+                                                                            value={assigneeStatusDraftFileName || ""}
+                                                                            onValueChange={(v) => setAssigneeStatusDraftFileName(v)}
+                                                                        >
+                                                                            <SelectTrigger className="h-8 text-xs">
+                                                                                <SelectValue placeholder={`File name for "${draftAssigneeStatusObj?.name}"`}/>
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                {myManagedFiles.map(f => (
+                                                                                    <SelectItem key={f.id} value={f.file_number}>
+                                                                                        {f.file_number} — {f.subject}
+                                                                                    </SelectItem>
+                                                                                ))}
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    ) : (
+                                                                        <input
+                                                                            type="text"
+                                                                            value={assigneeStatusDraftFileName}
+                                                                            onChange={(e) => setAssigneeStatusDraftFileName(e.target.value)}
+                                                                            placeholder={`File name for "${draftAssigneeStatusObj?.name}"`}
+                                                                            className="w-full rounded-md border px-2 h-8 text-xs"
+                                                                        />
+                                                                    )
+                                                                )}
+
+                                                                {assigneeStatusCopiesForwardedRequired && (
+                                                                    <div className="space-y-1">
+                                                                        <label className="text-xs text-muted-foreground">Copies Forwarded To</label>
+                                                                        <textarea
+                                                                            value={assigneeStatusDraftCopiesForwardedTo}
+                                                                            onChange={(e) => setAssigneeStatusDraftCopiesForwardedTo(e.target.value)}
+                                                                            rows={2}
+                                                                            placeholder={`Who copies were sent to for "${draftAssigneeStatusObj?.name}"`}
+                                                                            className="w-full rounded-md border px-2 py-1.5 text-xs resize-none"
+                                                                        />
+                                                                    </div>
+                                                                )}
+
+                                                                {assigneeStatusSummaryRequired && (
+                                                                    <div className="space-y-1">
+                                                                        <label className="text-xs text-muted-foreground">Summary</label>
+                                                                        <textarea
+                                                                            value={assigneeStatusDraftSummary}
+                                                                            onChange={(e) => setAssigneeStatusDraftSummary(e.target.value)}
+                                                                            rows={3}
+                                                                            placeholder={`Short summary of the reply for "${draftAssigneeStatusObj?.name}"`}
+                                                                            className="w-full rounded-md border px-2 py-1.5 text-xs resize-none"
+                                                                        />
+                                                                    </div>
+                                                                )}
+
+                                                                <div className="flex gap-2">
+                                                                    <Button
+                                                                        size="sm"
+                                                                        className="h-7 px-2 text-xs"
+                                                                        onClick={handleSaveAssigneeStatus}
+                                                                        disabled={isSavingAssigneeStatus}
+                                                                    >
+                                                                        {isSavingAssigneeStatus ? (
+                                                                            <><Loader2 className="mr-1 h-3 w-3 animate-spin"/>Saving...</>
+                                                                        ) : "Save"}
+                                                                    </Button>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="outline"
+                                                                        className="h-7 px-2 text-xs"
+                                                                        onClick={cancelEditAssigneeStatus}
+                                                                        disabled={isSavingAssigneeStatus}
+                                                                    >
+                                                                        Cancel
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="space-y-0.5">
+                                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusClassName(row.status_name)}`}>
+                                                                    {row.status_name}
+                                                                </span>
+                                                                {row.file_name && (
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        File Name: <span className="font-medium text-foreground">{row.file_name}</span>
+                                                                    </p>
+                                                                )}
+                                                                {row.copies_forwarded_to && (
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        Copies Forwarded To: <span className="font-medium text-foreground">{row.copies_forwarded_to}</span>
+                                                                    </p>
+                                                                )}
+                                                                {row.summary && (
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        Summary: <span className="font-medium text-foreground">{row.summary}</span>
+                                                                    </p>
+                                                                )}
+                                                                {typeof row.status_days === 'number' && (
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        {row.status_days} day{row.status_days !== 1 ? 's' : ''} in this status
+                                                                    </p>
+                                                                )}
+                                                                {row.assigned_by_name && (
+                               <p className="text-xs text-muted-foreground">
+                                   Assigned By: <span className="font-medium text-foreground">{row.assigned_by_name}</span>
+                               </p>
+                           )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="send-to-recommendation"
+                                    checked={sendToRecommendation}
+                                    onCheckedChange={(checked) => setSendToRecommendation(!!checked)}
+                                    disabled={!hasPermission('letter.recommend')}
+                                />
+                                <label htmlFor="send-to-recommendation" className="text-sm font-medium cursor-pointer">
+                                    Send to Recommendation
+                                </label>
+                            </div>
+                            {(sendToRecommendation || letter.recommended_to) && (
                                 <>
                                     <Separator/>
                                     <div className="space-y-2">
                                         <p className="text-sm font-medium">Recommended To</p>
                                         {sendToRecommendation && hasPermission('letter.recommend') ? (
                                             <div className="space-y-2">
-                                                {/* NEW — Department / Sub-Unit filters, same pattern as
-                                                    Assignees, so the "who to recommend to" list can be
-                                                    narrowed down before picking a system user. */}
                                                 <div className="grid grid-cols-1 gap-2">
                                                     <Select
                                                         value={recommendedDeptFilter ? recommendedDeptFilter.toString() : "0"}
                                                         onValueChange={(v) => {
                                                             const deptId = parseInt(v) || 0;
                                                             setRecommendedDeptFilter(deptId);
-                                                            // Clear a previously selected user if they no longer
-                                                            // match the newly chosen department filter.
                                                             const stillValid = allAssignees.find(a =>
                                                                 a.id === selectedRecommendedToId &&
                                                                 (!deptId || a.department_id === deptId)
@@ -1995,8 +2232,6 @@ const handleSaveAssigneeStatus = async () => {
                                 </>
                             )}
 
-
-                            {/* Save */}
                             {(hasPermission('letter.change_status') || hasPermission('letter.change_department') || hasPermission('letter.assign')) && (
                                 <Button className="w-full bg-green-600 hover:bg-green-700" onClick={handleSave} disabled={isSaving || !isDirty}>
                                     {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</> : <><Save className="mr-2 h-4 w-4"/>Save Changes</>}
@@ -2019,7 +2254,6 @@ const handleSaveAssigneeStatus = async () => {
                     letterData={letter}
                     onSuccess={fetchLetter}
                 />
-                
             )}
         </div>
     );

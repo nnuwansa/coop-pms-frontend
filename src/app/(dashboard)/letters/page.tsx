@@ -4,10 +4,12 @@ import {useCallback, useEffect, useState} from "react";
 import {useRouter} from "next/navigation";
 import {toast} from "sonner";
 import {
+    Check,
     ChevronLeft,
     ChevronRight,
     ChevronsLeft,
     ChevronsRight,
+    ChevronsUpDown,
     CircleAlert,
     Clock,
     Download,
@@ -23,6 +25,7 @@ import {
     Settings2,
     Trash2,
     X,
+    PenLine, Stamp,
 } from "lucide-react";
 
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
@@ -47,12 +50,15 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+// NEW — needed for the searchable Assignee filter dropdown
+import {Popover, PopoverContent, PopoverTrigger} from "@/components/ui/popover";
+import {Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList} from "@/components/ui/command";
 import {DatePickerWithRange} from "@/components/date-picker-with-range";
 import {InsertLetterModal} from "@/app/(dashboard)/letters/insert-letter-modal";
 import {ExportModal} from "@/app/(dashboard)/letters/export-modal";
 import {DeleteLetterAlert} from "@/app/(dashboard)/letters/delete-letter-alert";
 import {useDebounce} from "@/hook/debounce";
-import {formatDate} from "@/lib/utils";
+import {cn, formatDate} from "@/lib/utils"; // CHANGED — added cn, needed by the new searchable combobox
 import api from "@/lib/api";
 import {useAuthStore} from "@/store/auth-store";
 
@@ -98,6 +104,13 @@ interface Letter {
     assignee_ids?: number[];     // NEW — used to preselect the quick-edit dialog
     status_id?: number;          // NEW — used to preselect the quick-edit dialog
     create_datetime: string;
+    // NEW — the letter's actual Received Date (as entered on the letter),
+    // distinct from create_datetime (when the record was saved in the
+    // system). The "Received Date" column and all date sorting/filtering
+    // should be based on THIS field, not create_datetime — using
+    // create_datetime was the bug causing letters entered late (for an
+    // earlier date) to show up in the wrong place in the list.
+    received_datetime?: string;
     status: string;
     status_days?: number | null;   // NEW
     other?: string;
@@ -110,6 +123,10 @@ interface Letter {
     cheque_branch?: string | null;         // NEW
     completion_file_name?: string | null;  // NEW
     remarks_count?: number;  // NEW — used for the notify badge in Actions column
+     initials_by_pending?: {id: number; name: string} | null;
+   order_by_role?: {id: number; name: string} | null;
+   order_by_action?: {id: number; name: string} | null;
+
 }
 
 interface LetterFilters {
@@ -121,13 +138,14 @@ interface LetterFilters {
     status_id: number;   // still used by the stat-card clicks (overall letter status), unrelated to the assignee-status dropdown below
     assignee_status_id: number;   // CHANGED — new: replaces the manual "Select a Status" dropdown filter — filters by an individual assignee's own status instead of the letter's overall status
     organization_id: number;
-    create_date_start: string | null;
-    create_date_end: string | null;
+    create_date_start: string | null;  
+    create_date_end: string | null;  
     other: string;
     has_cheque: boolean;     // NEW
     pending_only: boolean;   // NEW
     pending_days_min: number | null;   // NEW — e.g. 1 for "1-5 days"
     pending_days_max: number | null;   // NEW — e.g. 5 for "1-5 days"; null = no upper bound ("30+ days")
+     is_public_complaint: boolean | null; 
 }
 
 interface ColumnVisibility {
@@ -141,7 +159,7 @@ interface ColumnVisibility {
     other: boolean;
     chequeStatus: boolean;     // NEW
     fileName: boolean;         // NEW
-    assigneeStatus: boolean;   // NEW — CHANGED: replaces the old overall-status column. Sits right next to Assignee and shows each assignee's own status.
+    assigneeStatus: boolean;   
 }
 
 
@@ -162,10 +180,19 @@ interface LetterStat {
     status_name: string;
 }
 
+// NEW — Order By option shape shared by both the Letter View page and the
+// dashboard's quick Order By dialog
+interface OrderByOptionItem {id: number; name: string; category: 'role' | 'action'}
+
+// NEW — matches the backend's Initials By candidate list
+interface InitialsByCandidate {id: number; name: string; is_default: boolean}
+
 const pageSizeOptions = [5, 10, 20, 50];
 
 // CHANGED — `id` search filter removed from the UI (kept in the shape only
 // so the payload sent to the API stays backward compatible; it is always 0).
+// CHANGED — create_date_start/create_date_end renamed to
+// received_date_start/received_date_end (see LetterFilters above).
 const initialFilters: LetterFilters = {
     id: 0,
     code: "",
@@ -182,6 +209,8 @@ const initialFilters: LetterFilters = {
     pending_only: false,  // NEW
     pending_days_min: null,   // NEW
     pending_days_max: null,   // NEW
+    is_public_complaint: null,
+
 };
 
 // CHANGED — department & assignee columns are now visible by default so the
@@ -208,6 +237,9 @@ const initialColumnVisibility: ColumnVisibility = {
 // CHANGED — Status has been removed from this dialog (status changes now
 // happen only from the full Letter View). Organization and
 // Subject/Content of the Letter were added in its place.
+// CHANGED — now also includes an "Initials By" section (admin picks who
+// should confirm), visible only to users with letter.initials_by_manage,
+// so that workflow no longer requires opening the full Letter View page.
 interface DepartmentAccount {
     id: number;
     department_id: number;
@@ -246,10 +278,17 @@ function QuickEditLetterDialog({
     const canUpdateDetails = hasPermission('letter.update');       // gates Organization + Subject
     const canChangeDepartment = hasPermission('letter.change_department');  // gates Departments checkboxes
     const canAssign = hasPermission('letter.assign');               // gates Assignees checkboxes
+    const canManageInitialsBy = hasPermission('letter.initials_by_manage');  // NEW — gates Initials By section
     const [assigneeDeptFilter, setAssigneeDeptFilter] = useState<number>(0);
     const [assigneeUnitFilter, setAssigneeUnitFilter] = useState<number>(0);
     const [assigneeUnits, setAssigneeUnits] = useState<{id: number; name: string}[]>([]);
     const [assigneeSearch, setAssigneeSearch] = useState("");
+
+    // NEW — Initials By: candidate list + which one is selected/pending
+    const [initialsByCandidates, setInitialsByCandidates] = useState<InitialsByCandidate[]>([]);
+    const [selectedPendingCandidateId, setSelectedPendingCandidateId] = useState<number>(0);
+    const [isLoadingInitialsBy, setIsLoadingInitialsBy] = useState(false);
+    const [isAssigningInitialsBy, setIsAssigningInitialsBy] = useState(false);
 
     useEffect(() => {
         setAssigneeUnitFilter(0);
@@ -276,7 +315,20 @@ function QuickEditLetterDialog({
             setSubjectText(letter.subject || "");
             const matchedOrg = organizations.find(o => o.name === letter.organization);
             setSelectedOrganizationId(matchedOrg?.id || 0);
+
+            // NEW — Initials By: preselect whoever is currently pending on
+            // this letter (if any), and load the candidate list if the user
+            // is allowed to manage it.
+            setSelectedPendingCandidateId(letter.initials_by_pending?.id || 0);
+            if (canManageInitialsBy) {
+                setIsLoadingInitialsBy(true);
+                api.get('/v1/system_user/by-permission/letter.initials_by')
+                    .then(r => setInitialsByCandidates(r.data.success ? r.data.data : []))
+                    .catch(() => setInitialsByCandidates([]))
+                    .finally(() => setIsLoadingInitialsBy(false));
+            }
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [letter, organizations]);
 
     const toggleDeptAccount = (id: number) =>   // CHANGED — was toggleDept
@@ -284,6 +336,25 @@ function QuickEditLetterDialog({
 
     const toggleAssignee = (id: number) =>
         setSelectedAssigneeIds(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
+
+    // NEW — sends the Initials By confirmation request; separate endpoint
+    // from the main Quick Edit save, same as the Letter View page's
+    // handleAssignInitialsBy.
+    const handleAssignInitialsBy = async () => {
+        if (!letter) return;
+        try {
+            setIsAssigningInitialsBy(true);
+            await api.put(`/v1/letter/${letter.id}/initials-by/assign`, {
+                initials_by_pending_user_id: selectedPendingCandidateId || null,
+            });
+            toast.success(selectedPendingCandidateId ? "Initials By request sent" : "Initials By request cancelled");
+            onSaved();
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to send Initials By request");
+        } finally {
+            setIsAssigningInitialsBy(false);
+        }
+    };
 
     const handleSave = async () => {
         if (!letter) return;
@@ -462,6 +533,53 @@ function QuickEditLetterDialog({
                             </div>
                         </div>
                     </div>
+
+                    {/* NEW — Initials By: only shown to users who can manage it.
+                        Mirrors "Step 1" from the Letter View page — picking a
+                        candidate here only SENDS the confirmation request; the
+                        actual seal value is only set once that person confirms
+                        it themselves (from Letter View or the notify icon). */}
+                    {canManageInitialsBy && (
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium">Initials By — send for confirmation to</label>
+                            {isLoadingInitialsBy ? (
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground py-1">
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin"/>Loading candidates...
+                                </div>
+                            ) : (
+                                <div className="flex gap-2">
+                                    <Select
+                                        value={selectedPendingCandidateId ? selectedPendingCandidateId.toString() : ""}
+                                        onValueChange={(v) => setSelectedPendingCandidateId(parseInt(v) || 0)}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Select who should confirm this"/>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {initialsByCandidates.map(c => (
+                                                <SelectItem key={c.id} value={c.id.toString()}>
+                                                    {c.name}{c.is_default ? ' (default)' : ''}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Button
+                                        size="sm"
+                                        className="h-9 px-3 text-xs shrink-0"
+                                        onClick={handleAssignInitialsBy}
+                                        disabled={isAssigningInitialsBy || selectedPendingCandidateId === (letter?.initials_by_pending?.id || 0)}
+                                    >
+                                        {isAssigningInitialsBy ? <Loader2 className="h-3 w-3 animate-spin"/> : "Send"}
+                                    </Button>
+                                </div>
+                            )}
+                            {letter?.initials_by_pending && (
+                                <p className="text-xs text-amber-600 dark:text-amber-400">
+                                    Awaiting confirmation from {letter.initials_by_pending.name}
+                                </p>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 <DialogFooter className="px-6 py-4 border-t shrink-0">
@@ -471,6 +589,230 @@ function QuickEditLetterDialog({
                             <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</>
                         ) : (
                             <><Save className="mr-2 h-4 w-4"/>Save Changes</>
+                        )}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        
+
+    );
+}
+
+// ─── Quick Order By Dialog ──────────────────────────────────────────────────
+// NEW — lets a user set the Role + Action for a letter's Order By seal right
+// from the dashboard's Stamp icon, instead of navigating into the full
+// Letter View page. Same picker/quick-add logic as Letter View, just scoped
+// to a small standalone dialog. Only sends order_by_role_id/order_by_action_id
+// in the PUT so it never touches this letter's departments/assignees/status/etc.
+function QuickOrderByDialog({
+    letter,
+    onClose,
+    onSaved,
+}: {
+    letter: Letter | null;
+    onClose: () => void;
+    onSaved: () => void;
+}) {
+    const [orderByRoleOptions, setOrderByRoleOptions] = useState<OrderByOptionItem[]>([]);
+    const [orderByActionOptions, setOrderByActionOptions] = useState<OrderByOptionItem[]>([]);
+    const [selectedRoleId, setSelectedRoleId] = useState<number>(0);
+    const [selectedActionId, setSelectedActionId] = useState<number>(0);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+
+    const [isAddingRole, setIsAddingRole] = useState(false);
+    const [newRoleName, setNewRoleName] = useState("");
+    const [isSavingRole, setIsSavingRole] = useState(false);
+    const [isAddingAction, setIsAddingAction] = useState(false);
+    const [newActionName, setNewActionName] = useState("");
+    const [isSavingAction, setIsSavingAction] = useState(false);
+
+    useEffect(() => {
+        if (!letter) return;
+        setSelectedRoleId(letter.order_by_role?.id || 0);
+        setSelectedActionId(letter.order_by_action?.id || 0);
+        setIsAddingRole(false);
+        setNewRoleName("");
+        setIsAddingAction(false);
+        setNewActionName("");
+        setIsLoading(true);
+        api.get('/v1/order-by-option/list')
+            .then(r => {
+                const all: OrderByOptionItem[] = r.data.success ? r.data.data : [];
+                setOrderByRoleOptions(all.filter(o => o.category === 'role'));
+                setOrderByActionOptions(all.filter(o => o.category === 'action'));
+            })
+            .catch(() => toast.error('Failed to load Order By options'))
+            .finally(() => setIsLoading(false));
+    }, [letter]);
+
+    const handleAddRole = async () => {
+        if (!newRoleName.trim()) {
+            toast.error("Enter a name for the new role");
+            return;
+        }
+        try {
+            setIsSavingRole(true);
+            const res = await api.post('/v1/order-by-option/quick-add', {name: newRoleName.trim(), category: 'role'});
+            const created = res.data.data;
+            setOrderByRoleOptions(prev => [...prev, {id: created.id, name: created.name, category: 'role'}]);
+            setSelectedRoleId(created.id);
+            setNewRoleName("");
+            setIsAddingRole(false);
+            toast.success("Role added");
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to add role");
+        } finally {
+            setIsSavingRole(false);
+        }
+    };
+
+    const handleAddAction = async () => {
+        if (!newActionName.trim()) {
+            toast.error("Enter a name for the new action");
+            return;
+        }
+        try {
+            setIsSavingAction(true);
+            const res = await api.post('/v1/order-by-option/quick-add', {name: newActionName.trim(), category: 'action'});
+            const created = res.data.data;
+            setOrderByActionOptions(prev => [...prev, {id: created.id, name: created.name, category: 'action'}]);
+            setSelectedActionId(created.id);
+            setNewActionName("");
+            setIsAddingAction(false);
+            toast.success("Action added");
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to add action");
+        } finally {
+            setIsSavingAction(false);
+        }
+    };
+
+    const handleSave = async () => {
+        if (!letter) return;
+        try {
+            setIsSaving(true);
+            // Only the two Order By fields are sent — the backend leaves
+            // everything else (departments, assignees, status, etc.)
+            // untouched, same as the Quick Edit dialog only sending its own
+            // fields.
+            await api.put(`/v1/letter/assignment/${letter.id}`, {
+                order_by_role_id: selectedRoleId || null,
+                order_by_action_id: selectedActionId || null,
+            });
+            toast.success(`Order By updated for ${letter.code}`);
+            onSaved();
+            onClose();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to save Order By');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return (
+        <Dialog open={!!letter} onOpenChange={(open) => { if (!open && !isSaving) onClose(); }}>
+            <DialogContent className="sm:max-w-[440px]">
+                <DialogHeader>
+                    <DialogTitle>Order By — {letter?.code}</DialogTitle>
+                    <DialogDescription>
+                        Set the Role and Action for this letter&apos;s Order By seal, without leaving the list.
+                    </DialogDescription>
+                </DialogHeader>
+
+                {isLoading ? (
+                    <div className="flex justify-center py-8">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground"/>
+                    </div>
+                ) : (
+                    <div className="space-y-4 py-2">
+                        {/* Role picker: නි.කො / ස.කො */}
+                        <div className="space-y-2">
+                            <label className="text-xs text-muted-foreground">Role</label>
+                            <Select
+                                value={selectedRoleId ? selectedRoleId.toString() : ""}
+                                onValueChange={(v) => setSelectedRoleId(parseInt(v) || 0)}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select role (නි.කො / ස.කො)"/>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {orderByRoleOptions.map(o => (
+                                        <SelectItem key={o.id} value={o.id.toString()}>{o.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            {isAddingRole ? (
+                                <div className="flex gap-2">
+                                    <Input
+                                        value={newRoleName}
+                                        onChange={(e) => setNewRoleName(e.target.value)}
+                                        placeholder="e.g. නි.කො"
+                                        className="h-8 text-xs"
+                                    />
+                                    <Button size="sm" className="h-8 px-2 text-xs" onClick={handleAddRole} disabled={isSavingRole}>
+                                        {isSavingRole ? <Loader2 className="h-3 w-3 animate-spin"/> : "Add"}
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="h-8 px-2 text-xs" onClick={() => { setIsAddingRole(false); setNewRoleName(""); }} disabled={isSavingRole}>
+                                        Cancel
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setIsAddingRole(true)}>
+                                    + Add a missing role
+                                </Button>
+                            )}
+                        </div>
+
+                        {/* Action picker: කරු. ඉදිරි කටයුතු සඳහා, etc */}
+                        <div className="space-y-2">
+                            <label className="text-xs text-muted-foreground">Action</label>
+                            <Select
+                                value={selectedActionId ? selectedActionId.toString() : ""}
+                                onValueChange={(v) => setSelectedActionId(parseInt(v) || 0)}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select action (කරු. ...)"/>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {orderByActionOptions.map(o => (
+                                        <SelectItem key={o.id} value={o.id.toString()}>{o.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            {isAddingAction ? (
+                                <div className="flex gap-2">
+                                    <Input
+                                        value={newActionName}
+                                        onChange={(e) => setNewActionName(e.target.value)}
+                                        placeholder="e.g. කරු. ඉදිරි කටයුතු සඳහා"
+                                        className="h-8 text-xs"
+                                    />
+                                    <Button size="sm" className="h-8 px-2 text-xs" onClick={handleAddAction} disabled={isSavingAction}>
+                                        {isSavingAction ? <Loader2 className="h-3 w-3 animate-spin"/> : "Add"}
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="h-8 px-2 text-xs" onClick={() => { setIsAddingAction(false); setNewActionName(""); }} disabled={isSavingAction}>
+                                        Cancel
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setIsAddingAction(true)}>
+                                    + Add a missing action
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                <DialogFooter>
+                    <Button variant="outline" onClick={onClose} disabled={isSaving}>Cancel</Button>
+                    <Button onClick={handleSave} disabled={isSaving || isLoading}>
+                        {isSaving ? (
+                            <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</>
+                        ) : (
+                            <><Save className="mr-2 h-4 w-4"/>Save</>
                         )}
                     </Button>
                 </DialogFooter>
@@ -498,7 +840,7 @@ export default function LetterDashboard() {
     const [refreshTrigger, setRefreshTrigger] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState(true);
     const [letterStats, setLetterStats] = useState<LetterStat[]>([]);
-    const {hasPermission} = useAuthStore();
+    const {hasPermission, user} = useAuthStore();
 
     // Delete dialog state
     const [letterToDelete, setLetterToDelete] = useState<Letter | null>(null);
@@ -507,8 +849,18 @@ export default function LetterDashboard() {
     // NEW — quick-edit dialog state (assignee/department/organization/subject shortcut from the table)
     const [letterToQuickEdit, setLetterToQuickEdit] = useState<Letter | null>(null);
 
+    // NEW — quick Order By dialog state (Stamp icon shortcut from the table)
+    const [letterToQuickOrderBy, setLetterToQuickOrderBy] = useState<Letter | null>(null);
+
     // NEW — row selection for bulk export of only the chosen letters
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [isBulkConfirming, setIsBulkConfirming] = useState(false);
+   const [showBulkConfirmDialog, setShowBulkConfirmDialog] = useState(false);
+   const [bulkConfirmNotes, setBulkConfirmNotes] = useState("");
+
+    // NEW — searchable Assignee filter combobox state
+    const [assigneeFilterOpen, setAssigneeFilterOpen] = useState(false);
+    const [assigneeFilterSearch, setAssigneeFilterSearch] = useState("");
 
    const [departmentAccounts, setDepartmentAccounts] = useState<DepartmentAccount[]>([]);   // NEW
 
@@ -575,6 +927,8 @@ useEffect(() => {
             assignee_id: debouncedFilters.assignee_id || 0,
             status_id: debouncedFilters.status_id || 0,
             assignee_status_id: debouncedFilters.assignee_status_id || 0,   // NEW
+            // CHANGED — now filters by the letter's Received Date instead of
+            // its create/entry date
             create_date_start: debouncedFilters.create_date_start || null,
             create_date_end: debouncedFilters.create_date_end || null,
             other: debouncedFilters.other || "",
@@ -582,6 +936,7 @@ useEffect(() => {
             pending_only: debouncedFilters.pending_only || false, // NEW
             pending_days_min: debouncedFilters.pending_days_min ?? null,   // NEW
             pending_days_max: debouncedFilters.pending_days_max ?? null,   // NEW
+             is_public_complaint: debouncedFilters.is_public_complaint, 
             
         };
 
@@ -593,7 +948,24 @@ useEffect(() => {
                 fetchLetterStats()
             ]);
 
-            setLetters(lettersResponse.data);
+            // CHANGED — sort by Received Date (falling back to create_datetime
+            // if a letter has no received_datetime), newest first, with the
+            // letter code as a tie-breaker when two letters share the same
+            // Received Date (the code also encodes the date, so it keeps
+            // same-day letters in a sensible, stable order). This fixes
+            // letters that were entered into the system late for an earlier
+            // date showing up in the wrong place in the list. Note: this
+            // only re-orders letters within the current page — ideally the
+            // backend's /v1/letter/list endpoint sorts by received_datetime
+            // directly so ordering is correct across pages too.
+            const sortedLetters = [...(lettersResponse.data || [])].sort((a, b) => {
+                const aTime = new Date(a.received_datetime || a.create_datetime).getTime();
+                const bTime = new Date(b.received_datetime || b.create_datetime).getTime();
+                if (bTime !== aTime) return bTime - aTime;
+                return (b.code || '').localeCompare(a.code || '');
+            });
+
+            setLetters(sortedLetters);
             setTotalPages(lettersResponse.total_pages || 0);
             setTotalRows(lettersResponse.total || 0);
             // NOTE: previously this did `.slice(0, 4)`, which silently dropped
@@ -619,6 +991,31 @@ useEffect(() => {
     useEffect(() => {
         setCurrentPage(1);
     }, [debouncedFilters]);
+
+    // NEW — among the currently-selected rows, how many are actually pending
+// confirmation FOR the logged-in user (letters selected that belong to
+// someone else's pending request are silently skipped by the backend).
+const selectedPendingForMeCount = letters.filter(
+    l => selectedIds.includes(l.id) && l.initials_by_pending?.id === user?.id
+).length;
+
+const handleBulkConfirmInitialsBy = async () => {
+    try {
+        setIsBulkConfirming(true);
+        const res = await api.put('/v1/letter/initials-by/bulk-confirm', {
+            letter_ids: selectedIds,
+            notes: bulkConfirmNotes.trim() || null,
+        });
+        toast.success(res.data.message);
+        setShowBulkConfirmDialog(false);
+        setBulkConfirmNotes("");
+        handleRefresh();
+    } catch (error) {
+        toast.error(error.response?.data?.message || "Failed to confirm");
+    } finally {
+        setIsBulkConfirming(false);
+    }
+};
 
     const handleRefresh = (): void => {
         setRefreshTrigger(prev => !prev);
@@ -879,6 +1276,11 @@ useEffect(() => {
                                     <Download className="mr-2 h-4 w-4"/>Export Selected ({selectedIds.length})
                                 </Button>
                             )}
+                            {selectedPendingForMeCount > 0 && (
+                                <Button variant="outline" onClick={() => setShowBulkConfirmDialog(true)}>
+                                    <PenLine className="mr-2 h-4 w-4"/>Confirm Initials By ({selectedPendingForMeCount})
+                                </Button>
+                            )}
                             <Button size="icon" variant="outline" onClick={handleRefresh} aria-label="Refresh">
                                 <RotateCw className="h-4 w-4"/>
                             </Button>
@@ -1035,24 +1437,64 @@ useEffect(() => {
                                             </Button>
                                         )}
                                     </div>
-                                    {/* NEW — Search by Assignee, always available regardless of
-                                        whether the Assignee column itself is toggled on */}
+                                    {/* CHANGED — Search by Assignee is now a searchable combobox
+                                        (type-to-filter) instead of a plain scrollable dropdown,
+                                        same pattern used for Organization elsewhere in the app. */}
                                     <div className="relative">
-                                        <Select
-                                            value={inputFilters.assignee_id !== 0 ? inputFilters.assignee_id.toString() : ""}
-                                            onValueChange={(value) => setInputFilters((prev) => ({
-                                                ...prev,
-                                                assignee_id: parseInt(value) || 0,
-                                            }))}>
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Search by Assignee"/>
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {assignees.map((a) => (
-                                                    <SelectItem key={a.id} value={a.id.toString()}>{a.name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <Popover open={assigneeFilterOpen} onOpenChange={setAssigneeFilterOpen}>
+                                            <PopoverTrigger asChild>
+                                                <Button
+                                                    variant="outline"
+                                                    role="combobox"
+                                                    className={cn(
+                                                        "w-full justify-between font-normal",
+                                                        !inputFilters.assignee_id && "text-muted-foreground"
+                                                    )}
+                                                >
+                                                    <span className="truncate text-start">
+                                                        {inputFilters.assignee_id
+                                                            ? assignees.find(a => a.id === inputFilters.assignee_id)?.name
+                                                            : "Search by Assignee"}
+                                                    </span>
+                                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
+                                                </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                                <Command filter={() => 1}>
+                                                    <CommandInput
+                                                        placeholder="Search assignee..."
+                                                        value={assigneeFilterSearch}
+                                                        onValueChange={setAssigneeFilterSearch}
+                                                    />
+                                                    <CommandList className="max-h-[260px] overflow-y-auto">
+                                                        <CommandEmpty>No assignee found.</CommandEmpty>
+                                                        <CommandGroup>
+                                                            {inputFilters.assignee_id !== 0 && (
+                                                                <CommandItem onSelect={() => {
+                                                                    setInputFilters(prev => ({...prev, assignee_id: 0}));
+                                                                    setAssigneeFilterOpen(false);
+                                                                    setAssigneeFilterSearch("");
+                                                                }} className="text-muted-foreground">
+                                                                    Clear selection
+                                                                </CommandItem>
+                                                            )}
+                                                            {assignees
+                                                                .filter(a => !assigneeFilterSearch || a.name.toLowerCase().includes(assigneeFilterSearch.toLowerCase()))
+                                                                .map(a => (
+                                                                    <CommandItem key={a.id} value={a.id.toString()} onSelect={() => {
+                                                                        setInputFilters(prev => ({...prev, assignee_id: a.id}));
+                                                                        setAssigneeFilterOpen(false);
+                                                                        setAssigneeFilterSearch("");
+                                                                    }}>
+                                                                        <Check className={cn("mr-2 h-4 w-4", inputFilters.assignee_id === a.id ? "opacity-100" : "opacity-0")}/>
+                                                                        {a.name}
+                                                                    </CommandItem>
+                                                                ))}
+                                                        </CommandGroup>
+                                                    </CommandList>
+                                                </Command>
+                                            </PopoverContent>
+                                        </Popover>
                                         {inputFilters.assignee_id !== 0 && (
                                             <Button variant="ghost" size="icon"
                                                 className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
@@ -1063,6 +1505,7 @@ useEffect(() => {
                                     </div>
                                     {columnVisibility.date && (
                                         <div>
+                                            {/* CHANGED — now filters by Received Date */}
                                             <DatePickerWithRange
                                                 date={{
                                                     from: inputFilters.create_date_start ? new Date(inputFilters.create_date_start) : undefined,
@@ -1135,6 +1578,25 @@ useEffect(() => {
                                             Has Cheque / Money Order
                                         </label>
                                     </div>
+                                    {/* NEW — Public Complaint filter */}
+<div className="relative">
+    <Select
+        value={inputFilters.is_public_complaint === null ? "all" : inputFilters.is_public_complaint ? "yes" : "no"}
+        onValueChange={(value) => setInputFilters(prev => ({
+            ...prev,
+            is_public_complaint: value === "all" ? null : value === "yes",
+        }))}
+    >
+        <SelectTrigger className="w-full">
+            <SelectValue placeholder="Public Complaint"/>
+        </SelectTrigger>
+        <SelectContent>
+            <SelectItem value="all">All Letters</SelectItem>
+            <SelectItem value="yes">Public Complaints Only</SelectItem>
+            <SelectItem value="no">Not Public Complaints</SelectItem>
+        </SelectContent>
+    </Select>
+</div>
                                     {/* CHANGED — was a plain "Pending Only" checkbox. Now a
                                         dropdown of day ranges, so someone can find e.g. only
                                         letters that have been pending 1-5 days, not just "any
@@ -1341,18 +1803,18 @@ useEffect(() => {
                                                             )}
                                                         </TableCell>
                                                     )}
-                                                    {/* CHANGED — added the days-pending badge under the date.
-                                                        Counts from Received Date and freezes once ALL assignees
-                                                        are "Completed" (matching how the backend now computes
-                                                        days_pending), not the letter's overall status — that
-                                                        stays out of sync once statuses moved to per-assignee. */}
+                                                    {/* CHANGED — Date column now shows the letter's actual
+                                                        Received Date (falls back to create_datetime only if
+                                                        received_datetime isn't present on older records), and
+                                                        the days-pending badge still counts from Received Date
+                                                        and freezes once ALL assignees are "Completed". */}
                                                     {(() => {
                                                         const isFullyCompleted = item.assignee_statuses && item.assignee_statuses.length > 0
                                                             ? item.assignee_statuses.every(s => s.status_name === 'Completed')
                                                             : item.status === 'Completed';
                                                         return columnVisibility.date && (
                                                         <TableCell className="w-[8%] align-top">
-                                                            <div className="break-words">{formatDate(item.create_datetime)}</div>
+                                                            <div className="break-words">{formatDate(item.received_datetime || item.create_datetime)}</div>
                                                             {typeof item.days_pending === 'number' && (
                                                                 <div
                                                                     className={`text-xs mt-0.5 ${
@@ -1447,7 +1909,40 @@ useEffect(() => {
                                                                         {item.remarks_count}
                                                                     </span>
                                                                 )}
+                                                                
                                                             </div>
+                                                            {/* NEW — Initials By pending notify: only shows to the person it's actually waiting on */}
+{item.initials_by_pending?.id === user?.id && (
+    <div className="relative">
+        <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-amber-600 hover:text-amber-700"
+            onClick={() => router.push(`/letters/${item.id}`)}
+            aria-label={`Initials confirmation pending for letter ${item.code}`}
+            title="Waiting for your initials confirmation"
+        >
+            <PenLine className="h-4 w-4"/>
+        </Button>
+        <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse"/>
+    </div>
+)}
+
+{/* CHANGED — Order By missing notify: now opens the QuickOrderByDialog
+    directly instead of navigating to the full Letter View page, so it can
+    be set right from the list. */}
+{hasPermission('letter.order_by') && (!item.order_by_role || !item.order_by_action) && (
+    <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-purple-600 hover:text-purple-700"
+        onClick={() => setLetterToQuickOrderBy(item)}
+        aria-label={`Order By incomplete for letter ${item.code}`}
+        title="Order By not yet set — click to set it"
+    >
+        <Stamp className="h-4 w-4"/>
+    </Button>
+)}
                                                             {/* NEW — quick-edit shortcut: change department/assignee/
                                                                 organization/subject right from the table, without
                                                                 opening the full letter view */}
@@ -1580,7 +2075,9 @@ useEffect(() => {
             {/* NEW — quick edit dialog, triggered from the pencil icon in Actions.
                 CHANGED — now receives `organizations` instead of `statuses`,
                 since Status was removed from this dialog in favor of
-                Organization + Subject/Content of the Letter. */}
+                Organization + Subject/Content of the Letter. Now also
+                includes the Initials By section internally (see the
+                QuickEditLetterDialog component above). */}
             <QuickEditLetterDialog
                 letter={letterToQuickEdit}
                 departmentAccounts={departmentAccounts} 
@@ -1589,6 +2086,39 @@ useEffect(() => {
                 onClose={() => setLetterToQuickEdit(null)}
                 onSaved={handleRefresh}
             />
+
+            {/* NEW — quick Order By dialog, triggered from the Stamp icon in
+                Actions instead of navigating to the full Letter View page. */}
+            <QuickOrderByDialog
+                letter={letterToQuickOrderBy}
+                onClose={() => setLetterToQuickOrderBy(null)}
+                onSaved={handleRefresh}
+            />
+
+            <Dialog open={showBulkConfirmDialog} onOpenChange={(open) => { if (!open && !isBulkConfirming) setShowBulkConfirmDialog(false); }}>
+    <DialogContent className="sm:max-w-[440px]">
+        <DialogHeader>
+            <DialogTitle>Confirm Initials By</DialogTitle>
+            <DialogDescription>
+                Confirms your initials on {selectedPendingForMeCount} letter{selectedPendingForMeCount !== 1 ? 's' : ''} that are pending your confirmation. The same notes will be applied to all of them.
+            </DialogDescription>
+        </DialogHeader>
+        <textarea
+            value={bulkConfirmNotes}
+            onChange={(e) => setBulkConfirmNotes(e.target.value)}
+            rows={3}
+            placeholder="Notes (optional, applies to all selected letters)"
+            className="w-full rounded-md border px-3 py-2 text-sm resize-none"
+            disabled={isBulkConfirming}
+        />
+        <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkConfirmDialog(false)} disabled={isBulkConfirming}>Cancel</Button>
+            <Button onClick={handleBulkConfirmInitialsBy} disabled={isBulkConfirming}>
+                {isBulkConfirming ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Confirming...</> : "Confirm All"}
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
         </div>
     );
 }
