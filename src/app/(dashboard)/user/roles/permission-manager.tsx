@@ -83,22 +83,7 @@ const [selectedAssignableUnitIds, setSelectedAssignableUnitIds] = useState<numbe
 const [allRoles, setAllRoles] = useState<{id: number; name: string}[]>([]);
 const [selectedAssignableRoleIds, setSelectedAssignableRoleIds] = useState<number[]>([]);
 
-// Move fetchPermissions to useCallback to include in dependency arrays
-    const fetchPermissions = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const response = await api.get('/v1/permission/list');
-            const data: PermissionsResponse = await response.data;
-            setPermissions(data.data);
-            return data.data; // Return the permissions for immediate use
-        } catch (error) {
-            console.error('Error fetching permissions:', error);
-            toast.error(error.response?.data.message || 'Something went wrong. Please try again');
-            return [];
-        } finally {
-            setIsLoading(false);
-        }
-    }, []);
+
 
 // Fetch statuses alongside permissions
 const fetchStatuses = useCallback(async () => {
@@ -110,12 +95,25 @@ const fetchStatuses = useCallback(async () => {
     }
 }, []);
 
-// Update fetchRolePermissions to also read status_ids from the new response shape
+// fetchPermissions - remove its own isLoading toggling
+const fetchPermissions = useCallback(async () => {
+    try {
+        const response = await api.get('/v1/permission/list');
+        const data: PermissionsResponse = await response.data;
+        setPermissions(data.data);
+        return data.data;
+    } catch (error) {
+        console.error('Error fetching permissions:', error);
+        toast.error(error.response?.data.message || 'Something went wrong. Please try again');
+        return [];
+    }
+}, []);
+
+// fetchRolePermissions - remove its own isLoading toggling too
 const fetchRolePermissions = useCallback(async (roleId: string, currentPermissions: PermissionCategory[]) => {
-    setIsLoading(true);
     try {
         const response = await api.get(`/v1/role/${roleId}/permissions`);
-        const data = response.data.data; // { permission_ids: number[], status_ids: number[] }
+        const data = response.data.data;
 
         const newFormData: PermissionFormData = {
             permissionIds: [...(data.permission_ids || [])],
@@ -136,16 +134,12 @@ const fetchRolePermissions = useCallback(async (roleId: string, currentPermissio
 
         setFormData(newFormData);
         setSelectedStatusIds(data.status_ids || []);
-setSelectedAssignableDeptIds(data.assignable_department_ids || []);
-setSelectedAssignableRoleIds(data.assignable_role_ids || []);
-// NEW — requires the backend to return `assignable_unit_ids` in this
-// same response (see note below). Defaults to empty until that's added.
-setSelectedAssignableUnitIds(data.assignable_unit_ids || []);
+        setSelectedAssignableDeptIds(data.assignable_department_ids || []);
+        setSelectedAssignableRoleIds(data.assignable_role_ids || []);
+        setSelectedAssignableUnitIds(data.assignable_unit_ids || []);
     } catch (error) {
         console.error(`Error fetching permissions for role ${roleId}:`, error);
         toast.error(`Failed to load permissions for ${selectedRole?.name}. Please try again.`);
-    } finally {
-        setIsLoading(false);
     }
 }, [selectedRole?.name]);
 
@@ -237,22 +231,32 @@ const fetchAssignableOptions = useCallback(async () => {
     }
 }, []);
 
-// Combined loading effect without dependency issues
-    useEffect(() => {
+// Combined loading effect — isLoading controlled ONCE, for the whole sequence
+useEffect(() => {
     if (isOpen && selectedRole) {
         const loadData = async () => {
+            setIsLoading(true);
+            // reset previous role's data so nothing stale flashes while loading
+            setFormData({permissionIds: [], radioSelections: {}});
+            setSelectedStatusIds([]);
+            setSelectedAssignableDeptIds([]);
+            setSelectedAssignableUnitIds([]);
+            setSelectedAssignableRoleIds([]);
+            setAssignableDeptUnits({});
             try {
                 const loadedPermissions = await fetchPermissions();
                 await fetchStatuses();
-                await fetchAssignableOptions();   // NEW
+                await fetchAssignableOptions();
                 if (loadedPermissions.length > 0) {
                     await fetchRolePermissions(selectedRole.id, loadedPermissions);
                 }
             } catch (error) {
                 console.error("Error in permission loading sequence:", error);
+            } finally {
+                setIsLoading(false);
             }
         };
-        loadData().catch((error) => console.error("Error loading permissions:", error));
+        loadData();
     }
 }, [isOpen, selectedRole, fetchPermissions, fetchRolePermissions, fetchStatuses, fetchAssignableOptions]);
 
