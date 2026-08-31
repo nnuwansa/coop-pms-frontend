@@ -262,30 +262,42 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
         }
     }, [isOpen, isLoading, fetchLetterCode]);
 
-    const handleOpenChange = (open: boolean) => {
-        setIsOpen(open);
-        if (!open) {
-            reset();
-            setIsLoading(false);
-            setOrgSearch("");
-            setSourceSearch("");
-            setIsAddingOrg(false);
-            setNewOrgName("");
-            setNewOrgAddress("");
-            setNewOrgEmail("");
-            setNewOrgTelephone("");
-            setNewOrgFax("");  
-            setIsEditingDepts(false);     
-            setIsEditingAssignees(false);  
-            setDatePopoverOpen(false);
-            setSelectedSenderLabel(""); 
-            setDragOffset({x: 0, y: 0}); 
-            setAssigneeDeptFilter(0);   // NEW
-            setAssigneeUnitFilter(0);   // NEW
-            setAssigneeSearch("");      // NEW
-            setSelectedInitialsByUserId(0);
-        }
-    };
+    
+   const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    // NEW — dialog එක open වෙනකොට Received Date field එක actual current
+    // moment එකට set කරනවා. Without this, receivedDate defaults to
+    // whatever `new Date()` was captured at when the component first
+    // MOUNTED (i.e. when the dashboard page loaded) — not when the dialog
+    // is actually opened. If the tab was left open for hours/days, a
+    // letter inserted without manually touching the date field would get
+    // saved with a stale received_datetime, causing it to sort out of
+    // place instead of appearing as the newest letter.
+    if (open) {
+        setValue('receivedDate', new Date());
+    }
+    if (!open) {
+        reset();
+        setIsLoading(false);
+        setOrgSearch("");
+        setSourceSearch("");
+        setIsAddingOrg(false);
+        setNewOrgName("");
+        setNewOrgAddress("");
+        setNewOrgEmail("");
+        setNewOrgTelephone("");
+        setNewOrgFax("");  
+        setIsEditingDepts(false);     
+        setIsEditingAssignees(false);  
+        setDatePopoverOpen(false);
+        setSelectedSenderLabel(""); 
+        setDragOffset({x: 0, y: 0}); 
+        setAssigneeDeptFilter(0);
+        setAssigneeUnitFilter(0);
+        setAssigneeSearch("");
+        setSelectedInitialsByUserId(0);
+    }
+};
 
     // replace handleAddOrganization with:
 const handleAddOrganization = async () => {
@@ -435,9 +447,16 @@ const handleAddOrganization = async () => {
             // without re-clicking "New Letter" every time. Just reset the form
             // back to blank and pull a fresh code for the next letter.
             reset();
+            // NEW — reset() alone brings receivedDate back to the STALE `new Date()`
+            // captured when the form was first initialized (mount time), not the
+            // actual current moment. Without this line, the 2nd/3rd/... letter
+            // inserted back-to-back in the same session would also get backdated,
+            // same root cause as the dialog-open case above.
+            setValue('receivedDate', new Date());
             fileInputRef.current && (fileInputRef.current.value = "");
             await fetchLetterCode(new Date());
             onSuccess?.();
+
         } catch (error) {
             console.error(error.message);
             toast.error(error.response?.data.message || 'Something went wrong. Please try again');
