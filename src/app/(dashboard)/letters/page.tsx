@@ -1017,9 +1017,16 @@ const handleBulkConfirmInitialsBy = async () => {
     }
 };
 
+    // const handleRefresh = (): void => {
+    //     setRefreshTrigger(prev => !prev);
+    // };
+
     const handleRefresh = (): void => {
-        setRefreshTrigger(prev => !prev);
-    };
+    setCurrentPage(1);  
+                          
+                    
+    setRefreshTrigger(prev => !prev);
+};
 
     const generatePageNumbers = (): number[] => {
         const pageNumbers: number[] = [];
