@@ -545,25 +545,18 @@ const handleAddOrganization = async () => {
                                                         //     setDatePopoverOpen(false); {/* NEW — closes immediately on select */}
                                                         // }}
                                                         onSelect={(date) => {
-                                                                if (date) {
-                                                                    // NEW — Calendar returns a Date at local midnight. Converting
-                                                                    // that straight to UTC via .toISOString() shifts it back to the
-                                                                    // PREVIOUS day for timezones ahead of UTC (e.g. Sri Lanka,
-                                                                    // UTC+5:30 -> local midnight Aug 25 becomes Aug 24 18:30 UTC).
-                                                                    // We rebuild the date using UTC year/month/day at noon UTC
-                                                                    // instead, so the calendar day the user picked always matches
-                                                                    // the day actually stored, regardless of the browser's timezone.
-                                                                    const normalizedDate = new Date(Date.UTC(
-                                                                        date.getFullYear(),
-                                                                        date.getMonth(),
-                                                                        date.getDate(),
-                                                                        12, 0, 0
-                                                                    ));
-                                                                    field.onChange(normalizedDate);
-                                                                    fetchLetterCode(normalizedDate).catch(console.error);
-                                                                }
-                                                                setDatePopoverOpen(false);
-                                                            }}
+                                                            if (date) {
+                                                                const normalizedDate = new Date(Date.UTC(
+                                                                    date.getFullYear(),
+                                                                    date.getMonth(),
+                                                                    date.getDate(),
+                                                                    12, 0, 0     // ← "noon UTC" fix
+                                                                ));
+                                                                field.onChange(normalizedDate);
+                                                                fetchLetterCode(normalizedDate).catch(console.error);
+                                                            }
+                                                            setDatePopoverOpen(false);
+                                                        }}
                                                         disabled={(date) => date > new Date() || date < new Date("1900-01-01")}
                                                         initialFocus/>
                                                 </PopoverContent>
