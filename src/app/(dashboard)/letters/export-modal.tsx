@@ -1,6 +1,6 @@
 'use client';
 
-import {useState} from "react";
+import {useEffect, useState} from "react";
 import {Button} from "@/components/ui/button";
 import {
     Dialog,
@@ -34,6 +34,28 @@ interface Column {
     checked: boolean;
 }
 
+const DEFAULT_COLUMNS: Column[] = [
+    {id: 'id', label: 'ID', checked: true},
+    {id: 'code', label: 'Code', checked: true},
+    {id: 'organization.name', label: 'Sender/Organization of the letter', checked: true},
+    {id: 'subject', label: 'Subject/Content of the letter ', checked: true},
+    {id: 'sender_subject_no', label: "Sender's Subject No", checked: true},
+    {id: 'sender', label: "Sender's Address", checked: false},
+    {id: 'department.name', label: 'Section', checked: true},
+    {id: 'assignee', label: 'Assignee', checked: true},
+    {id: 'email', label: 'Email', checked: true},
+    {id: 'telephone', label: 'Telephone', checked: false},
+    {id: 'source.name', label: 'Source', checked: true},
+    {id: 'status.name', label: 'Status', checked: false},
+    {id: 'completion_file_name', label: 'File Name', checked: true},
+    {id: 'other', label: 'Cheque no /Money Order No ', checked: true},
+    {id: 'cheque_details', label: 'Cheque Details', checked: false},
+    {id: 'attachments', label: 'Attachments Count', checked: false},
+    {id: 'received_datetime', label: 'Received Date', checked: true},
+    {id: 'create_datetime', label: 'Create Date', checked: false},
+    {id: 'update_datetime', label: 'Update Date', checked: false},
+];
+
 // Snaps a date to the start/end of its LOCAL calendar day before converting
 // to an ISO string. Without this, .toISOString() converts local midnight
 // straight to UTC (e.g. Sri Lanka +5:30 → the previous day at 18:30 UTC),
@@ -51,35 +73,15 @@ const toLocalEndOfDay = (date: Date) => {
 };
 
 export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportModalProps) {
-    const [dateRange, setDateRange] = useState({
+    const [dateRange, setDateRange] = useState<{ create_date_start: Date | null; create_date_end: Date | null }>({
         create_date_start: null,
         create_date_end: null,
     });
 
     const [numEntries, setNumEntries] = useState('100');
     const [orientation, setOrientation] = useState<'landscape' | 'portrait'>('landscape');
-    const [publicComplaintFilter, setPublicComplaintFilter] = useState<'all' | 'yes' | 'no'>('all');   // NEW
-    const [columns, setColumns] = useState<Column[]>([
-        {id: 'id', label: 'ID', checked: true},
-        {id: 'code', label: 'Code', checked: true},
-        {id: 'organization.name', label: 'Sender/Organization of the letter', checked: true},
-        {id: 'subject', label: 'Subject/Content of the letter ', checked: true},
-        {id: 'sender_subject_no', label: "Sender's Subject No", checked: true},
-        {id: 'sender', label: "Sender's Address", checked: false},
-        {id: 'department.name', label: 'Section', checked: true},
-        {id: 'assignee', label: 'Assignee', checked: true},
-        {id: 'email', label: 'Email', checked: true},
-        {id: 'telephone', label: 'Telephone', checked: false},
-        {id: 'source.name', label: 'Source', checked: true},
-        {id: 'status.name', label: 'Status', checked: false},
-        {id: 'completion_file_name', label: 'File Name', checked: true},
-        {id: 'other', label: 'Cheque no /Money Order No ', checked: true},
-        {id: 'cheque_details', label: 'Cheque Details', checked: false},
-        {id: 'attachments', label: 'Attachments Count', checked: false},
-        {id: 'received_datetime', label: 'Received Date', checked: true},
-        {id: 'create_datetime', label: 'Create Date', checked: false},
-        {id: 'update_datetime', label: 'Update Date', checked: false},
-    ]);
+    const [publicComplaintFilter, setPublicComplaintFilter] = useState<'all' | 'yes' | 'no'>('all');
+    const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
 
     const [isDownloading, setIsDownloading] = useState(false);
     const [isPrinting, setIsPrinting] = useState(false);
@@ -87,13 +89,44 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
 
     const hasSelection = selectedIds.length > 0;
 
-    // NEW — if only a start date was picked (the range calendar's "to" can
-    // stay unset even when the display box shows the same date twice for a
-    // single-day click), treat it as a single-day range: end = start.
-    // Without this fallback, a missing end meant NO upper bound at all, so
-    // every letter received AFTER the picked day was also wrongly included
-    // in the export/print/report — this is the actual fix for that bug.
-    const effectiveEndDate = dateRange.create_date_end || dateRange.create_date_start;
+    // NEW — reset every filter/column back to its default state each time
+    // the dialog is freshly opened. Without this, closing the dialog and
+    // reopening it (e.g. to do a plain export right after a date-filtered
+    // one) kept the PREVIOUS date range / column selections in state,
+    // which is what made exports look like they were "ignoring" the dates
+    // the user thought they'd just picked — they were actually seeing a
+    // stale selection from an earlier open of the same modal instance.
+    useEffect(() => {
+        if (isOpen) {
+            setDateRange({create_date_start: null, create_date_end: null});
+            setNumEntries('100');
+            setOrientation('landscape');
+            setPublicComplaintFilter('all');
+            setColumns(DEFAULT_COLUMNS);
+        }
+    }, [isOpen]);
+
+    // NEW — computes the effective (start, end) pair ONCE, in one place,
+    // used identically by both handleExport and handlePrint so the two
+    // can never drift out of sync with each other. Also defends against
+    // a range picked backwards (end before start) by swapping them.
+    const getDateFilter = (): { start: string | undefined; end: string | undefined } => {
+        if (!dateRange.create_date_start) {
+            return {start: undefined, end: undefined};
+        }
+        let start = dateRange.create_date_start;
+        let end = dateRange.create_date_end || dateRange.create_date_start;
+        // Defensive swap — a range picked with end before start should
+        // still filter correctly rather than silently returning zero rows
+        // (start > end make most SQL BETWEEN-style filters match nothing).
+        if (end < start) {
+            [start, end] = [end, start];
+        }
+        return {
+            start: toLocalStartOfDay(start).toISOString(),
+            end: toLocalEndOfDay(end).toISOString(),
+        };
+    };
 
     const handleExport = async () => {
         try {
@@ -103,26 +136,25 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                 .map(column => column.id);
 
             const limit = numEntries === 'all' ? 0 : parseInt(numEntries);
+            const {start, end} = getDateFilter();
 
-            const requestBody = {
-                ...(hasSelection
-                    ? {ids: selectedIds}
-                    : {
-                        limit,
-                        // CHANGED — snapped to local start/end of day, and
-                        // end falls back to start (effectiveEndDate) when
-                        // only a single day was picked.
-                        ...(dateRange.create_date_start && {
-                            create_date_start: toLocalStartOfDay(dateRange.create_date_start).toISOString()
-                        }),
-                        ...(dateRange.create_date_start && {
-                            create_date_end: toLocalEndOfDay(effectiveEndDate).toISOString()
-                        }),
-                        ...(publicComplaintFilter !== 'all' && {is_public_complaint: publicComplaintFilter === 'yes'}),
-                    }),
-                   
-                columns: selectedColumns,
-            };
+            const requestBody = hasSelection
+                ? {
+                    ids: selectedIds,
+                    columns: selectedColumns,
+                }
+                : {
+                    limit,
+                    ...(start && {create_date_start: start}),
+                    ...(end && {create_date_end: end}),
+                    ...(publicComplaintFilter !== 'all' && {is_public_complaint: publicComplaintFilter === 'yes'}),
+                    columns: selectedColumns,
+                };
+
+            // NEW — surfaces exactly what's being sent, so if a future export
+            // still looks wrong, the actual request body is one console
+            // check away instead of a guessing game.
+            console.debug('[ExportModal] export request body:', requestBody);
 
             const response = await api.post('/v1/letter/download-excel/', requestBody, {
                 responseType: 'blob',
@@ -136,7 +168,7 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                 return;
             }
 
-            const blob = new Blob([response.data], { type: contentType });
+            const blob = new Blob([response.data], {type: contentType});
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -146,10 +178,8 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
             onCloseAction();
-
         } catch (error) {
             console.error('Export error full:', error);
-
             if (error.code === 'ERR_NETWORK') {
                 toast.error('Network error - Backend server ekata connect wenaddi. Server running da check karanna.');
             } else {
@@ -183,15 +213,7 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
         try {
             const selectedColumns = columns.filter(c => c.checked && c.id !== 'id');
             const limit = numEntries === 'all' ? 0 : parseInt(numEntries);
-
-            // CHANGED — snapped to local start/end of day, end falls back to
-            // start for a single-day pick, same fix as handleExport.
-            const create_date_start = dateRange.create_date_start
-                ? toLocalStartOfDay(dateRange.create_date_start).toISOString()
-                : undefined;
-            const create_date_end = dateRange.create_date_start
-                ? toLocalEndOfDay(effectiveEndDate).toISOString()
-                : undefined;
+            const {start, end} = getDateFilter();
 
             const listResponse = hasSelection
                 ? await api.post(`/v1/letter/list?page=1&page_size=${selectedIds.length}`, {
@@ -210,8 +232,8 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                 : await api.post(
                     `/v1/letter/list?page=1&page_size=${limit || 9999}`,
                     {
-                        create_date_start: create_date_start || null,
-                        create_date_end: create_date_end || null,
+                        create_date_start: start || null,
+                        create_date_end: end || null,
                         id: 0,
                         code: "",
                         subject: "",
@@ -222,6 +244,8 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                         other: "",
                     }
                 );
+
+            console.debug('[ExportModal] print list request dates:', {start, end});
 
             // Explicit chronological sort by Received Date (oldest first)
             // instead of a blind .reverse() of whatever order the API
@@ -235,7 +259,7 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
             const dateRangeText = hasSelection
                 ? `${selectedIds.length} Selected Letter${selectedIds.length !== 1 ? 's' : ''}`
                 : dateRange.create_date_start
-                    ? `${format(dateRange.create_date_start, 'yyyy-MM-dd')} to ${format(effectiveEndDate, 'yyyy-MM-dd')}`
+                    ? `${format(dateRange.create_date_start, 'yyyy-MM-dd')} to ${format(dateRange.create_date_end || dateRange.create_date_start, 'yyyy-MM-dd')}`
                     : 'All Dates';
 
             printWindow.document.open();
@@ -245,7 +269,7 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                 <head>
                     <title>Letters Report</title>
                     <style>
-                       @page { size: ${orientation}; margin: 25mm 10mm 12mm 10mm; }
+                        @page { size: ${orientation}; margin: 25mm 10mm 12mm 10mm; }
                         * { box-sizing: border-box; }
                         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; font-size: 12px; }
 
@@ -273,7 +297,7 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                         tr { page-break-inside: avoid; break-inside: avoid; }
                         thead { display: table-header-group; }
                         .header-row th {
-                            background: #fff; border: none;  padding: 6px 0 6px 0;
+                            background: #fff; border: none; padding: 6px 0 6px 0;
                             text-align: center;
                         }
                         .header-row h1 { font-size: 16px; margin: 0 0 3px 0; }
@@ -410,7 +434,6 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                                 </Select>
                             </div>
 
-                            {/* NEW — Public Complaint filter for export */}
                             <div className="space-y-2">
                                 <Label>Public Complaint</Label>
                                 <Select value={publicComplaintFilter} onValueChange={(v: 'all' | 'yes' | 'no') => setPublicComplaintFilter(v)}>
