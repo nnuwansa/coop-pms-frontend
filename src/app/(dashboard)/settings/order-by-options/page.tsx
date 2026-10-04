@@ -312,10 +312,9 @@ export default function OrderByOptionsPage() {
                                                     {option.name}
                                                 </TableCell>
                                                 <TableCell>
-+                                                   <Badge variant="outline" className="text-xs">
-+                                                       {option.category === 'role' ? 'Role' : 'Action'}
-+                                                   </Badge>
-+                                               </TableCell>
+                                                  <Badge variant="outline" className="text-xs">                                                      {option.category === 'role' ? 'Role' : 'Action'}
+                                                  </Badge>
+                                              </TableCell>
                                                 <TableCell>
                                                     {option.is_active ? (
                                                         <Badge variant="secondary" className="text-xs bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">
