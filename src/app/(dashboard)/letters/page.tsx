@@ -1,6 +1,6 @@
 'use client';
 
-import {useCallback, useEffect, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import {useRouter} from "next/navigation";
 import {toast} from "sonner";
 import {
@@ -11,7 +11,6 @@ import {
     ChevronsRight,
     ChevronsUpDown,
     CircleAlert,
-    Clock,
     Download,
     Eye,
     Filter,
@@ -24,6 +23,7 @@ import {
     Save,
     Settings2,
     Trash2,
+    UserX,
     X,
     PenLine, Stamp,
 } from "lucide-react";
@@ -50,7 +50,6 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-// NEW — needed for the searchable Assignee filter dropdown
 import {Popover, PopoverContent, PopoverTrigger} from "@/components/ui/popover";
 import {Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList} from "@/components/ui/command";
 import {DatePickerWithRange} from "@/components/date-picker-with-range";
@@ -58,7 +57,7 @@ import {InsertLetterModal} from "@/app/(dashboard)/letters/insert-letter-modal";
 import {ExportModal} from "@/app/(dashboard)/letters/export-modal";
 import {DeleteLetterAlert} from "@/app/(dashboard)/letters/delete-letter-alert";
 import {useDebounce} from "@/hook/debounce";
-import {cn, formatDate} from "@/lib/utils"; // CHANGED — added cn, needed by the new searchable combobox
+import {cn, formatDate} from "@/lib/utils";
 import api from "@/lib/api";
 import {useAuthStore} from "@/store/auth-store";
 
@@ -76,8 +75,8 @@ interface Status {
 interface Assignee {
     id: number;
     name: string;
-    department_id?: number | null;          // NEW
-    department_unit_id?: number | null;     // NEW
+    department_id?: number | null;
+    department_unit_id?: number | null;
 }
 
 interface Organization {
@@ -85,7 +84,7 @@ interface Organization {
     name: string;
 }
 
-// NEW — matches the backend's AssigneeStatusBrief model
+// matches the backend's AssigneeStatusBrief model
 interface AssigneeStatusBrief {
     assignee_name: string;
     status_name: string;
@@ -98,35 +97,30 @@ interface Letter {
     subject: string;
     organization: string;
     department: string;
-    department_ids?: number[];   // NEW — used to preselect the quick-edit dialog
-    department_account_ids?: number[]; 
+    department_ids?: number[];
+    department_account_ids?: number[];
     assignee: string;
-    assignee_ids?: number[];     // NEW — used to preselect the quick-edit dialog
-    status_id?: number;          // NEW — used to preselect the quick-edit dialog
+    assignee_ids?: number[];
+    status_id?: number;
     create_datetime: string;
-    // NEW — the letter's actual Received Date (as entered on the letter),
-    // distinct from create_datetime (when the record was saved in the
-    // system). The "Received Date" column and all date sorting/filtering
-    // should be based on THIS field, not create_datetime — using
-    // create_datetime was the bug causing letters entered late (for an
-    // earlier date) to show up in the wrong place in the list.
+    // the letter's actual Received Date (as entered), distinct from
+    // create_datetime (when the record was saved in the system)
     received_datetime?: string;
     status: string;
-    status_days?: number | null;   // NEW
+    status_days?: number | null;
     other?: string;
-    days_pending?: number | null;          // NEW — days since received; frozen once ALL assignees are "Completed" (or, with no assignees, once the letter's own status is "Completed")
-    assignee_statuses?: AssigneeStatusBrief[];   // CHANGED — structured objects instead of flat strings, so each badge can be colored by its own status and carry its own file_name
-    cheque_deposited?: boolean;            // NEW
-    cheque_deposit_date?: string | null;   // NEW
-    cheque_account_no?: string | null;     // NEW
-    cheque_bank?: string | null;           // NEW
-    cheque_branch?: string | null;         // NEW
-    completion_file_name?: string | null;  // NEW
-    remarks_count?: number;  // NEW — used for the notify badge in Actions column
-     initials_by_pending?: {id: number; name: string} | null;
-   order_by_role?: {id: number; name: string} | null;
-   order_by_action?: {id: number; name: string} | null;
-
+    days_pending?: number | null;
+    assignee_statuses?: AssigneeStatusBrief[];
+    cheque_deposited?: boolean;
+    cheque_deposit_date?: string | null;
+    cheque_account_no?: string | null;
+    cheque_bank?: string | null;
+    cheque_branch?: string | null;
+    completion_file_name?: string | null;
+    remarks_count?: number;
+    initials_by_pending?: {id: number; name: string} | null;
+    order_by_role?: {id: number; name: string} | null;
+    order_by_action?: {id: number; name: string} | null;
 }
 
 interface LetterFilters {
@@ -135,17 +129,19 @@ interface LetterFilters {
     subject: string;
     department_id: number;
     assignee_id: number;
-    status_id: number;   // still used by the stat-card clicks (overall letter status), unrelated to the assignee-status dropdown below
-    assignee_status_id: number;   // CHANGED — new: replaces the manual "Select a Status" dropdown filter — filters by an individual assignee's own status instead of the letter's overall status
+    status_id: number;
+    assignee_status_id: number;
     organization_id: number;
-    create_date_start: string | null;  
-    create_date_end: string | null;  
+    create_date_start: string | null;
+    create_date_end: string | null;
     other: string;
-    has_cheque: boolean;     // NEW
-    pending_only: boolean;   // NEW
-    pending_days_min: number | null;   // NEW — e.g. 1 for "1-5 days"
-    pending_days_max: number | null;   // NEW — e.g. 5 for "1-5 days"; null = no upper bound ("30+ days")
-     is_public_complaint: boolean | null; 
+    has_cheque: boolean;
+    pending_only: boolean;
+    pending_days_min: number | null;
+    pending_days_max: number | null;
+    is_public_complaint: boolean | null;
+    no_section: boolean;     // NEW — only letters with NO section routed yet
+    no_assignee: boolean;    // NEW — only letters with NO assignee yet
 }
 
 interface ColumnVisibility {
@@ -157,11 +153,10 @@ interface ColumnVisibility {
     assignee: boolean;
     date: boolean;
     other: boolean;
-    chequeStatus: boolean;     // NEW
-    fileName: boolean;         // NEW
-    assigneeStatus: boolean;   
+    chequeStatus: boolean;
+    fileName: boolean;
+    assigneeStatus: boolean;
 }
-
 
 interface ApiResponse<T> {
     success: boolean;
@@ -170,29 +165,24 @@ interface ApiResponse<T> {
     total_pages?: number;
 }
 
-// NOTE: `status_id` is still returned by the API for filtering purposes,
-// but we now match cards by `status` (the human-readable name) instead of
-// assuming a fixed id -> meaning mapping (that assumption was wrong: id 2
-// is "Forwarded" in this system, not "Assigned").
 interface LetterStat {
     status_id: number;
     count: number;
     status_name: string;
 }
 
-// NEW — Order By option shape shared by both the Letter View page and the
-// dashboard's quick Order By dialog
+// NEW — counts for the "Section Not Selected" / "Assignee Not Selected" cards
+interface GapCounts {
+    section_not_selected: number;
+    assignee_not_selected: number;
+}
+
 interface OrderByOptionItem {id: number; name: string; category: 'role' | 'action'}
 
-// NEW — matches the backend's Initials By candidate list
 interface InitialsByCandidate {id: number; name: string; is_default: boolean}
 
 const pageSizeOptions = [5, 10, 20, 50];
 
-// CHANGED — `id` search filter removed from the UI (kept in the shape only
-// so the payload sent to the API stays backward compatible; it is always 0).
-// CHANGED — create_date_start/create_date_end renamed to
-// received_date_start/received_date_end (see LetterFilters above).
 const initialFilters: LetterFilters = {
     id: 0,
     code: "",
@@ -200,22 +190,20 @@ const initialFilters: LetterFilters = {
     department_id: 0,
     assignee_id: 0,
     status_id: 0,
-    assignee_status_id: 0,   // NEW
+    assignee_status_id: 0,
     organization_id: 0,
     create_date_start: null,
     create_date_end: null,
     other: "",
-    has_cheque: false,    // NEW
-    pending_only: false,  // NEW
-    pending_days_min: null,   // NEW
-    pending_days_max: null,   // NEW
+    has_cheque: false,
+    pending_only: false,
+    pending_days_min: null,
+    pending_days_max: null,
     is_public_complaint: null,
-
+    no_section: false,     // NEW
+    no_assignee: false,    // NEW
 };
 
-// CHANGED — department & assignee columns are now visible by default so the
-// list view always shows who/what department a letter is with, without the
-// user having to turn the columns on manually.
 const initialColumnVisibility: ColumnVisibility = {
     id: true,
     code: true,
@@ -225,21 +213,12 @@ const initialColumnVisibility: ColumnVisibility = {
     assignee: true,
     date: true,
     other: false,
-    chequeStatus: false,     // NEW
-    fileName: false,         // NEW
-    assigneeStatus: true,    // CHANGED — this now takes the place of the old Status column, shown by default
+    chequeStatus: false,
+    fileName: false,
+    assigneeStatus: true,
 };
 
 // ─── Quick Edit Dialog ──────────────────────────────────────────────────────
-// Lets a user change a letter's Departments / Assignees / Organization /
-// Subject directly from the dashboard table (via the pencil icon in the
-// Actions column), without navigating into the full Letter View page first.
-// CHANGED — Status has been removed from this dialog (status changes now
-// happen only from the full Letter View). Organization and
-// Subject/Content of the Letter were added in its place.
-// CHANGED — now also includes an "Initials By" section (admin picks who
-// should confirm), visible only to users with letter.initials_by_manage,
-// so that workflow no longer requires opening the full Letter View page.
 interface DepartmentAccount {
     id: number;
     department_id: number;
@@ -251,40 +230,34 @@ interface DepartmentAccount {
 
 function QuickEditLetterDialog({
     letter,
-    departmentAccounts,   // CHANGED — was `departments: Department[]`
+    departmentAccounts,
     assignees,
     organizations,
     onClose,
     onSaved,
 }: {
     letter: Letter | null;
-    departmentAccounts: DepartmentAccount[];   // CHANGED
+    departmentAccounts: DepartmentAccount[];
     assignees: Assignee[];
     organizations: Organization[];
     onClose: () => void;
     onSaved: () => void;
 }) {
-    const [selectedDeptAccountIds, setSelectedDeptAccountIds] = useState<number[]>([]);   // CHANGED — was selectedDeptIds
+    const [selectedDeptAccountIds, setSelectedDeptAccountIds] = useState<number[]>([]);
     const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<number[]>([]);
     const [selectedOrganizationId, setSelectedOrganizationId] = useState<number>(0);
     const [subjectText, setSubjectText] = useState<string>("");
     const [isSaving, setIsSaving] = useState(false);
-    // NEW — same permission pattern as the Letter View page: fields stay
-    // visible for context, but are individually disabled when the current
-    // user lacks the specific permission for that field, instead of the
-    // whole dialog being all-or-nothing based on just whichever permission
-    // let the pencil icon show in the first place.
     const {hasPermission} = useAuthStore();
-    const canUpdateDetails = hasPermission('letter.update');       // gates Organization + Subject
-    const canChangeDepartment = hasPermission('letter.change_department');  // gates Departments checkboxes
-    const canAssign = hasPermission('letter.assign');               // gates Assignees checkboxes
-    const canManageInitialsBy = hasPermission('letter.initials_by_manage');  // NEW — gates Initials By section
+    const canUpdateDetails = hasPermission('letter.update');
+    const canChangeDepartment = hasPermission('letter.change_department');
+    const canAssign = hasPermission('letter.assign');
+    const canManageInitialsBy = hasPermission('letter.initials_by_manage');
     const [assigneeDeptFilter, setAssigneeDeptFilter] = useState<number>(0);
     const [assigneeUnitFilter, setAssigneeUnitFilter] = useState<number>(0);
     const [assigneeUnits, setAssigneeUnits] = useState<{id: number; name: string}[]>([]);
     const [assigneeSearch, setAssigneeSearch] = useState("");
 
-    // NEW — Initials By: candidate list + which one is selected/pending
     const [initialsByCandidates, setInitialsByCandidates] = useState<InitialsByCandidate[]>([]);
     const [selectedPendingCandidateId, setSelectedPendingCandidateId] = useState<number>(0);
     const [isLoadingInitialsBy, setIsLoadingInitialsBy] = useState(false);
@@ -298,27 +271,24 @@ function QuickEditLetterDialog({
             .catch(() => setAssigneeUnits([]));
     }, [assigneeDeptFilter]);
 
-    const filteredAssignees = assignees.filter(a =>
+    // CHANGED — the assignee list stays EMPTY until a section (and optionally a
+    // sub-unit) is chosen in the filter, or a name is typed in the search box.
+    const hasAssigneeScope = !!assigneeDeptFilter || !!assigneeSearch.trim();
+
+    const filteredAssignees = !hasAssigneeScope ? [] : assignees.filter(a =>
         (!assigneeDeptFilter || a.department_id === assigneeDeptFilter) &&
         (!assigneeUnitFilter || a.department_unit_id === assigneeUnitFilter) &&
         (!assigneeSearch.trim() || a.name.toLowerCase().includes(assigneeSearch.trim().toLowerCase()))
     );
 
-    // NOTE: this correctly preselects checkboxes from `letter.department_account_ids`
-    // and `letter.assignee_ids` — those just need to actually be present in
-    // the `letter` object passed in, which requires the backend's list
-    // endpoint (LetterModelOutList) to populate them. See service/letter.py.
     useEffect(() => {
         if (letter) {
-            setSelectedDeptAccountIds(letter.department_account_ids || []);   // CHANGED
+            setSelectedDeptAccountIds(letter.department_account_ids || []);
             setSelectedAssigneeIds(letter.assignee_ids || []);
             setSubjectText(letter.subject || "");
             const matchedOrg = organizations.find(o => o.name === letter.organization);
             setSelectedOrganizationId(matchedOrg?.id || 0);
 
-            // NEW — Initials By: preselect whoever is currently pending on
-            // this letter (if any), and load the candidate list if the user
-            // is allowed to manage it.
             setSelectedPendingCandidateId(letter.initials_by_pending?.id || 0);
             if (canManageInitialsBy) {
                 setIsLoadingInitialsBy(true);
@@ -331,15 +301,27 @@ function QuickEditLetterDialog({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [letter, organizations]);
 
-    const toggleDeptAccount = (id: number) =>   // CHANGED — was toggleDept
+    const toggleDeptAccount = (id: number) =>
         setSelectedDeptAccountIds(prev => prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]);
 
-    const toggleAssignee = (id: number) =>
-        setSelectedAssigneeIds(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
+    // CHANGED — ticking an assignee also adds that assignee's own section
+    // (the backend does the same, this just keeps the dialog in sync)
+    const toggleAssignee = (id: number) => {
+        const isAdding = !selectedAssigneeIds.includes(id);
+        setSelectedAssigneeIds(prev => isAdding ? [...prev, id] : prev.filter(a => a !== id));
+        if (isAdding) {
+            const assignee = assignees.find(a => a.id === id);
+            if (assignee?.department_id) {
+                const match = departmentAccounts.find(da =>
+                    da.department_id === assignee.department_id &&
+                    (da.department_unit_id ?? null) === (assignee.department_unit_id ?? null));
+                if (match && !selectedDeptAccountIds.includes(match.id)) {
+                    setSelectedDeptAccountIds(prev => [...prev, match.id]);
+                }
+            }
+        }
+    };
 
-    // NEW — sends the Initials By confirmation request; separate endpoint
-    // from the main Quick Edit save, same as the Letter View page's
-    // handleAssignInitialsBy.
     const handleAssignInitialsBy = async () => {
         if (!letter) return;
         try {
@@ -361,7 +343,7 @@ function QuickEditLetterDialog({
         try {
             setIsSaving(true);
             await api.put(`/v1/letter/assignment/${letter.id}`, {
-                department_ids: selectedDeptAccountIds,   // CHANGED — sends department ACCOUNT ids now
+                department_ids: selectedDeptAccountIds,
                 assignee_ids: selectedAssigneeIds,
                 organization_id: selectedOrganizationId || undefined,
                 subject: subjectText,
@@ -416,7 +398,6 @@ function QuickEditLetterDialog({
                         />
                     </div>
 
-                    {/* Departments — CHANGED to use department accounts (unit-aware) */}
                     <div className="space-y-1.5">
                         <label className="text-sm font-medium">Sections</label>
                         {selectedDeptAccountIds.length > 0 && (
@@ -455,7 +436,6 @@ function QuickEditLetterDialog({
                         </div>
                     </div>
 
-                    {/* Assignees — CHANGED: disabled (not hidden) when the user lacks letter.assign, same pattern as Letter View */}
                     <div className="space-y-1.5">
                         <label className="text-sm font-medium">Assignees</label>
                         {selectedAssigneeIds.length > 0 && (
@@ -482,11 +462,10 @@ function QuickEditLetterDialog({
                                     onValueChange={(v) => setAssigneeDeptFilter(parseInt(v) || 0)}
                                 >
                                     <SelectTrigger className="h-8 text-xs">
-                                        <SelectValue placeholder="Filter by section"/>
+                                        <SelectValue placeholder="Select a section"/>
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="0">All sections</SelectItem>
-                                        {/* CHANGED — derive unique parent departments from departmentAccounts */}
+                                        <SelectItem value="0">Select a section</SelectItem>
                                         {Array.from(
                                             new Map(departmentAccounts.map(da => [da.department_id, da.department_name])).entries()
                                         ).map(([id, name]) => (
@@ -517,7 +496,11 @@ function QuickEditLetterDialog({
                                 className="h-8 text-xs"
                             />
                             <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto">
-                                {filteredAssignees.length === 0 ? (
+                                {!hasAssigneeScope ? (
+                                    <p className="text-sm text-muted-foreground col-span-2">
+                                        Select a section (and sub-unit) to see its assignees, or search by name.
+                                    </p>
+                                ) : filteredAssignees.length === 0 ? (
                                     <p className="text-sm text-muted-foreground col-span-2">No assignees match this filter</p>
                                 ) : filteredAssignees.map(a => (
                                     <div key={a.id} className="flex items-center space-x-2">
@@ -534,11 +517,6 @@ function QuickEditLetterDialog({
                         </div>
                     </div>
 
-                    {/* NEW — Initials By: only shown to users who can manage it.
-                        Mirrors "Step 1" from the Letter View page — picking a
-                        candidate here only SENDS the confirmation request; the
-                        actual seal value is only set once that person confirms
-                        it themselves (from Letter View or the notify icon). */}
                     {canManageInitialsBy && (
                         <div className="space-y-1.5">
                             <label className="text-sm font-medium">Initials By — send for confirmation to</label>
@@ -594,18 +572,10 @@ function QuickEditLetterDialog({
                 </DialogFooter>
             </DialogContent>
         </Dialog>
-
-        
-
     );
 }
 
 // ─── Quick Order By Dialog ──────────────────────────────────────────────────
-// NEW — lets a user set the Role + Action for a letter's Order By seal right
-// from the dashboard's Stamp icon, instead of navigating into the full
-// Letter View page. Same picker/quick-add logic as Letter View, just scoped
-// to a small standalone dialog. Only sends order_by_role_id/order_by_action_id
-// in the PUT so it never touches this letter's departments/assignees/status/etc.
 function QuickOrderByDialog({
     letter,
     onClose,
@@ -694,10 +664,8 @@ function QuickOrderByDialog({
         if (!letter) return;
         try {
             setIsSaving(true);
-            // Only the two Order By fields are sent — the backend leaves
-            // everything else (departments, assignees, status, etc.)
-            // untouched, same as the Quick Edit dialog only sending its own
-            // fields.
+            // Only the two Order By fields are sent — with the updated
+            // backend, everything else (sections, assignees, ...) is untouched.
             await api.put(`/v1/letter/assignment/${letter.id}`, {
                 order_by_role_id: selectedRoleId || null,
                 order_by_action_id: selectedActionId || null,
@@ -728,7 +696,6 @@ function QuickOrderByDialog({
                     </div>
                 ) : (
                     <div className="space-y-4 py-2">
-                        {/* Role picker: නි.කො / ස.කො */}
                         <div className="space-y-2">
                             <label className="text-xs text-muted-foreground">Role</label>
                             <Select
@@ -766,7 +733,6 @@ function QuickOrderByDialog({
                             )}
                         </div>
 
-                        {/* Action picker: කරු. ඉදිරි කටයුතු සඳහා, etc */}
                         <div className="space-y-2">
                             <label className="text-xs text-muted-foreground">Action</label>
                             <Select
@@ -840,69 +806,80 @@ export default function LetterDashboard() {
     const [refreshTrigger, setRefreshTrigger] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState(true);
     const [letterStats, setLetterStats] = useState<LetterStat[]>([]);
+    // NEW — counts for the two "not selected" cards
+    const [gapCounts, setGapCounts] = useState<GapCounts>({section_not_selected: 0, assignee_not_selected: 0});
+    // NEW — only the LATEST request is allowed to update the screen. A filter
+    // change also resets the page to 1, which fires a second request; if the
+    // older one finished last it used to overwrite the filtered result.
+    const requestIdRef = useRef(0);
     const {hasPermission, user} = useAuthStore();
 
-    // Delete dialog state
     const [letterToDelete, setLetterToDelete] = useState<Letter | null>(null);
     const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
-    // NEW — quick-edit dialog state (assignee/department/organization/subject shortcut from the table)
     const [letterToQuickEdit, setLetterToQuickEdit] = useState<Letter | null>(null);
-
-    // NEW — quick Order By dialog state (Stamp icon shortcut from the table)
     const [letterToQuickOrderBy, setLetterToQuickOrderBy] = useState<Letter | null>(null);
 
-    // NEW — row selection for bulk export of only the chosen letters
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
     const [isBulkConfirming, setIsBulkConfirming] = useState(false);
-   const [showBulkConfirmDialog, setShowBulkConfirmDialog] = useState(false);
-   const [bulkConfirmNotes, setBulkConfirmNotes] = useState("");
+    const [showBulkConfirmDialog, setShowBulkConfirmDialog] = useState(false);
+    const [bulkConfirmNotes, setBulkConfirmNotes] = useState("");
 
-    // NEW — searchable Assignee filter combobox state
     const [assigneeFilterOpen, setAssigneeFilterOpen] = useState(false);
     const [assigneeFilterSearch, setAssigneeFilterSearch] = useState("");
 
-   const [departmentAccounts, setDepartmentAccounts] = useState<DepartmentAccount[]>([]);   // NEW
+    const [departmentAccounts, setDepartmentAccounts] = useState<DepartmentAccount[]>([]);
 
-useEffect(() => {
-    const fetchDropdownData = async (): Promise<void> => {
-        try {
-            const [deptResponse, statusResponse, assigneeResponse, orgResponse, deptAccountsResponse] = await Promise.all([
-                api.get('/v1/department/list'),
-                api.get('/v1/status/list'),
-                api.get('/v1/system_user/names'),
-                api.get('/v1/organization/list'),
-                api.get('/v1/system_user/department-accounts'),   // NEW
-            ]);
+    useEffect(() => {
+        const fetchDropdownData = async (): Promise<void> => {
+            try {
+                const [deptResponse, statusResponse, assigneeResponse, orgResponse, deptAccountsResponse] = await Promise.all([
+                    api.get('/v1/department/list'),
+                    api.get('/v1/status/list'),
+                    api.get('/v1/system_user/names'),
+                    api.get('/v1/organization/list'),
+                    api.get('/v1/system_user/department-accounts'),
+                ]);
 
-            const [deptData, statusData, assigneeData, orgData, deptAccountsData] = await Promise.all([
-                deptResponse.data,
-                statusResponse.data,
-                assigneeResponse.data,
-                orgResponse.data,
-                deptAccountsResponse.data,   // NEW
-            ]);
+                const [deptData, statusData, assigneeData, orgData, deptAccountsData] = await Promise.all([
+                    deptResponse.data,
+                    statusResponse.data,
+                    assigneeResponse.data,
+                    orgResponse.data,
+                    deptAccountsResponse.data,
+                ]);
 
-            if (deptData.success) setDepartments(deptData.data);
-            if (statusData.success) setStatuses(statusData.data);
-            if (assigneeData.success) setAssignees(assigneeData.data);
-            if (orgData.success) setOrganizations(orgData.data);
-            if (deptAccountsData.success) setDepartmentAccounts(deptAccountsData.data);   // NEW
+                if (deptData.success) setDepartments(deptData.data);
+                if (statusData.success) setStatuses(statusData.data);
+                if (assigneeData.success) setAssignees(assigneeData.data);
+                if (orgData.success) setOrganizations(orgData.data);
+                if (deptAccountsData.success) setDepartmentAccounts(deptAccountsData.data);
 
-        } catch (error) {
-            console.error("Error fetching dropdown data:", error);
-            toast.error(error.response?.data.message || 'Something went wrong. Please try again');
-        }
-    };
+            } catch (error) {
+                console.error("Error fetching dropdown data:", error);
+                toast.error(error.response?.data.message || 'Something went wrong. Please try again');
+            }
+        };
 
-    fetchDropdownData().catch((err) =>
-        console.error("Unhandled error in fetchDropdownData", err)
-    );
-}, []);
+        fetchDropdownData().catch((err) =>
+            console.error("Unhandled error in fetchDropdownData", err)
+        );
+    }, []);
 
     const fetchLetterStats = useCallback(async () => {
         const response = await api.get('/v1/letter/stats/');
         return await response.data;
+    }, []);
+
+    // NEW — "Section Not Selected" / "Assignee Not Selected" counts.
+    // Wrapped so a failure here never blocks the letters list from loading.
+    const fetchGapCounts = useCallback(async (): Promise<GapCounts> => {
+        try {
+            const response = await api.get('/v1/letter/assignment-gaps/');
+            return response.data?.data ?? {section_not_selected: 0, assignee_not_selected: 0};
+        } catch {
+            return {section_not_selected: 0, assignee_not_selected: 0};
+        }
     }, []);
 
     const fetchLettersFromApi = useCallback(
@@ -919,68 +896,57 @@ useEffect(() => {
 
     const loadLetters = useCallback(async (): Promise<void> => {
         const filters: Partial<LetterFilters> = {
-            id: 0,   // CHANGED — ID search removed from the UI, always sent as unfiltered
-            code: debouncedFilters.code || "",
-            subject: debouncedFilters.subject || "",
+            id: 0,
+            code: (debouncedFilters.code || "").trim(),
+            subject: (debouncedFilters.subject || "").trim(),
             organization_id: debouncedFilters.organization_id || 0,
             department_id: debouncedFilters.department_id || 0,
             assignee_id: debouncedFilters.assignee_id || 0,
             status_id: debouncedFilters.status_id || 0,
-            assignee_status_id: debouncedFilters.assignee_status_id || 0,   // NEW
-            // CHANGED — now filters by the letter's Received Date instead of
-            // its create/entry date
+            assignee_status_id: debouncedFilters.assignee_status_id || 0,
             create_date_start: debouncedFilters.create_date_start || null,
             create_date_end: debouncedFilters.create_date_end || null,
             other: debouncedFilters.other || "",
-            has_cheque: debouncedFilters.has_cheque || false,     // NEW
-            pending_only: debouncedFilters.pending_only || false, // NEW
-            pending_days_min: debouncedFilters.pending_days_min ?? null,   // NEW
-            pending_days_max: debouncedFilters.pending_days_max ?? null,   // NEW
-             is_public_complaint: debouncedFilters.is_public_complaint, 
-            
+            has_cheque: debouncedFilters.has_cheque || false,
+            pending_only: debouncedFilters.pending_only || false,
+            pending_days_min: debouncedFilters.pending_days_min ?? null,
+            pending_days_max: debouncedFilters.pending_days_max ?? null,
+            is_public_complaint: debouncedFilters.is_public_complaint,
+            no_section: debouncedFilters.no_section || false,       // NEW
+            no_assignee: debouncedFilters.no_assignee || false,     // NEW
         };
+
+        const myRequestId = ++requestIdRef.current;
 
         try {
             setIsLoading(true);
 
-            const [lettersResponse, statsResponse] = await Promise.all([
+            const [lettersResponse, statsResponse, gaps] = await Promise.all([
                 fetchLettersFromApi(currentPage, pageSize, filters),
-                fetchLetterStats()
+                fetchLetterStats(),
+                fetchGapCounts(),
             ]);
 
-            // CHANGED — sort by Received Date (falling back to create_datetime
-            // if a letter has no received_datetime), newest first, with the
-            // letter code as a tie-breaker when two letters share the same
-            // Received Date (the code also encodes the date, so it keeps
-            // same-day letters in a sensible, stable order). This fixes
-            // letters that were entered into the system late for an earlier
-            // date showing up in the wrong place in the list. Note: this
-            // only re-orders letters within the current page — ideally the
-            // backend's /v1/letter/list endpoint sorts by received_datetime
-            // directly so ordering is correct across pages too.
-            const sortedLetters = [...(lettersResponse.data || [])].sort((a, b) => {
-                const aTime = new Date(a.received_datetime || a.create_datetime).getTime();
-                const bTime = new Date(b.received_datetime || b.create_datetime).getTime();
-                if (bTime !== aTime) return bTime - aTime;
-                return (b.code || '').localeCompare(a.code || '');
-            });
+            // a newer request has started meanwhile — drop this stale answer
+            if (myRequestId !== requestIdRef.current) return;
 
-            setLetters(sortedLetters);
+            // CHANGED — NO client-side re-sorting any more. The backend now
+            // orders by letter CODE (newest first) across ALL pages, so a
+            // newly inserted letter appears exactly at its code's position.
+            setLetters(lettersResponse.data || []);
             setTotalPages(lettersResponse.total_pages || 0);
             setTotalRows(lettersResponse.total || 0);
-            // NOTE: previously this did `.slice(0, 4)`, which silently dropped
-            // any status beyond the first 4 returned by the API and made the
-            // cards depend on array order rather than status name. We now keep
-            // the full list and look up each card's count by status name below.
             setLetterStats(statsResponse.data);
-            setSelectedIds([]);   // NEW — clear selection whenever the page's data changes
+            setGapCounts(gaps);
+            setSelectedIds([]);
 
             setIsLoading(false);
         } catch (error) {
             console.error("Error fetching letters", error);
+            if (myRequestId === requestIdRef.current) setIsLoading(false);
             toast.error(error.response?.data.message || 'Something went wrong. Please try again');
         }
-    }, [currentPage, debouncedFilters, pageSize, fetchLettersFromApi, fetchLetterStats]);
+    }, [currentPage, debouncedFilters, pageSize, fetchLettersFromApi, fetchLetterStats, fetchGapCounts]);
 
     useEffect(() => {
         loadLetters().catch((err) =>
@@ -992,47 +958,49 @@ useEffect(() => {
         setCurrentPage(1);
     }, [debouncedFilters]);
 
-    // NEW — among the currently-selected rows, how many are actually pending
-// confirmation FOR the logged-in user (letters selected that belong to
-// someone else's pending request are silently skipped by the backend).
-const selectedPendingForMeCount = letters.filter(
-    l => selectedIds.includes(l.id) && l.initials_by_pending?.id === user?.id
-).length;
+    const selectedPendingForMeCount = letters.filter(
+        l => selectedIds.includes(l.id) && l.initials_by_pending?.id === user?.id
+    ).length;
 
-const handleBulkConfirmInitialsBy = async () => {
-    try {
-        setIsBulkConfirming(true);
-        const res = await api.put('/v1/letter/initials-by/bulk-confirm', {
-            letter_ids: selectedIds,
-            notes: bulkConfirmNotes.trim() || null,
-        });
-        toast.success(res.data.message);
-        setShowBulkConfirmDialog(false);
-        setBulkConfirmNotes("");
-        handleRefresh();
-    } catch (error) {
-        toast.error(error.response?.data?.message || "Failed to confirm");
-    } finally {
-        setIsBulkConfirming(false);
-    }
-};
-
-    // const handleRefresh = (): void => {
-    //     setRefreshTrigger(prev => !prev);
-    // };
+    const handleBulkConfirmInitialsBy = async () => {
+        try {
+            setIsBulkConfirming(true);
+            const res = await api.put('/v1/letter/initials-by/bulk-confirm', {
+                letter_ids: selectedIds,
+                notes: bulkConfirmNotes.trim() || null,
+            });
+            toast.success(res.data.message);
+            setShowBulkConfirmDialog(false);
+            setBulkConfirmNotes("");
+            handleRefresh();
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to confirm");
+        } finally {
+            setIsBulkConfirming(false);
+        }
+    };
 
     const handleRefresh = (): void => {
-    setCurrentPage(1);  
-                          
-                    
-    setRefreshTrigger(prev => !prev);
-};
+        setCurrentPage(1);
+        setRefreshTrigger(prev => !prev);
+    };
+
+    // NEW — clicking the "Section Not Selected" / "Assignee Not Selected" card
+    // filters the table; clicking the same card again clears that filter.
+    const handleGapClick = (key: 'no_section' | 'no_assignee'): void => {
+        !showFilters && setShowFilters(true);
+        setInputFilters(prev => ({
+            ...prev,
+            no_section: key === 'no_section' ? !prev.no_section : false,
+            no_assignee: key === 'no_assignee' ? !prev.no_assignee : false,
+        }));
+    };
 
     const generatePageNumbers = (): number[] => {
         const pageNumbers: number[] = [];
         const maxVisiblePages = 5;
         let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-        let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+        const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
 
         if (endPage - startPage + 1 < maxVisiblePages) {
             startPage = Math.max(1, endPage - maxVisiblePages + 1);
@@ -1066,14 +1034,11 @@ const handleBulkConfirmInitialsBy = async () => {
         if (status === 'Assigned') return 'bg-orange-100 text-yellow-800 dark:bg-orange-800 dark:text-yellow-200';
         if (status === 'Forwarded') return 'bg-orange-100 text-yellow-800 dark:bg-orange-800 dark:text-yellow-200';
         if (status === 'In Progress') return 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200';
-        if (status === 'Not Relevant') return 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200';   // CHANGED
+        if (status === 'Not Relevant') return 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200';
         if (status === null) return 'bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200';
         return 'bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-200';
     };
 
-    // Look up a stat card's count by the status's human-readable name rather
-    // than assuming a fixed status_id. This is resilient to status ids being
-    // reordered/renamed in the `status` table.
     const getStatCount = (statusName: string): number => {
         const stat = letterStats.find(
             (s) => s.status_name?.toLowerCase() === statusName.toLowerCase()
@@ -1081,10 +1046,7 @@ const handleBulkConfirmInitialsBy = async () => {
         return stat?.count ?? 0;
     };
 
-    // Clicking a stat card filters the table by that status. We resolve the
-    // status_id from the fetched stats (falling back to the `statuses`
-    // dropdown list, in case a status currently has zero letters and so
-    // doesn't appear in letterStats) instead of hardcoding an id.
+    // Clicking a stat card filters the table by that status (click again to clear)
     const handleStatsClick = (statusName: string): void => {
         const stat = letterStats.find(
             (s) => s.status_name?.toLowerCase() === statusName.toLowerCase()
@@ -1098,22 +1060,19 @@ const handleBulkConfirmInitialsBy = async () => {
         !showFilters && setShowFilters(true);
         setInputFilters((prev) => ({
             ...prev,
-            status_id: statusId,
+            status_id: prev.status_id === statusId ? 0 : statusId,
         }));
     };
 
-    // Open the confirmation dialog for a specific letter
     const handleDeleteClick = (letter: Letter): void => {
         setLetterToDelete(letter);
     };
 
-    // Close the confirmation dialog (unless a delete is in progress)
     const handleDeleteDialogClose = (): void => {
         if (isDeleting) return;
         setLetterToDelete(null);
     };
 
-    // Confirm deletion: call the API, then refresh the list
     const handleDeleteConfirm = async (): Promise<void> => {
         if (!letterToDelete) return;
 
@@ -1123,7 +1082,6 @@ const handleBulkConfirmInitialsBy = async () => {
             toast.success(`Letter ${letterToDelete.code} deleted successfully`);
             setLetterToDelete(null);
 
-            // If we just deleted the last row on this page, step back a page
             if (letters.length === 1 && currentPage > 1) {
                 setCurrentPage((prev) => prev - 1);
             } else {
@@ -1137,7 +1095,6 @@ const handleBulkConfirmInitialsBy = async () => {
         }
     };
 
-    // NEW — row selection helpers
     const allOnPageSelected = letters.length > 0 && letters.every(l => selectedIds.includes(l.id));
     const toggleSelectAllOnPage = (checked: boolean) => {
         if (checked) {
@@ -1151,9 +1108,6 @@ const handleBulkConfirmInitialsBy = async () => {
         setSelectedIds(prev => checked ? [...prev, id] : prev.filter(x => x !== id));
     };
 
-    // NEW — total number of visible columns, used for dynamic colSpan on the
-    // "loading" and "no letters found" rows so they never depend on a
-    // hardcoded number that goes stale whenever a column is added/removed.
     const visibleColumnCount =
         1 + // selection checkbox column
         Object.values(columnVisibility).filter(Boolean).length +
@@ -1176,9 +1130,10 @@ const handleBulkConfirmInitialsBy = async () => {
                 />
             </div>
 
-            {/* Stats Cards */}
+            {/* Stats Cards: New | Section Not Selected | Assignee Not Selected | Not Relevant */}
             <div className="grid gap-6 md:grid-cols-4">
-                <Card className="cursor-pointer hover:shadow-md transition-shadow duration-200"
+                <Card className={cn("cursor-pointer hover:shadow-md transition-shadow duration-200",
+                        inputFilters.status_id !== 0 && inputFilters.status_id === letterStats.find(s => s.status_name?.toLowerCase() === "new")?.status_id && "ring-2 ring-primary")}
                     onClick={() => handleStatsClick("New")}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">New</CardTitle>
@@ -1198,10 +1153,13 @@ const handleBulkConfirmInitialsBy = async () => {
                         )}
                     </CardContent>
                 </Card>
-                <Card className="cursor-pointer hover:shadow-md transition-shadow duration-200"
-                    onClick={() => handleStatsClick("Forwarded")}>
+
+                {/* NEW — replaces the old "Assigned/Forwarded" card */}
+                <Card className={cn("cursor-pointer hover:shadow-md transition-shadow duration-200",
+                        inputFilters.no_section && "ring-2 ring-primary")}
+                    onClick={() => handleGapClick('no_section')}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Assigned</CardTitle>
+                        <CardTitle className="text-sm font-medium">Section Not Selected</CardTitle>
                         <MailCheck className="h-4 w-4 text-amber-600"/>
                     </CardHeader>
                     <CardContent>
@@ -1212,17 +1170,20 @@ const handleBulkConfirmInitialsBy = async () => {
                             </div>
                         ) : (
                             <>
-                                <div className="text-2xl font-bold">{getStatCount("Forwarded")}</div>
-                                <p className="text-xs text-muted-foreground">Forwarded</p>
+                                <div className="text-2xl font-bold">{gapCounts.section_not_selected}</div>
+                                <p className="text-xs text-muted-foreground">Letters without a section</p>
                             </>
                         )}
                     </CardContent>
                 </Card>
-                <Card className="cursor-pointer hover:shadow-md transition-shadow duration-200"
-                    onClick={() => handleStatsClick("In Progress")}>
+
+                {/* NEW — replaces the old "In Progress" card */}
+                <Card className={cn("cursor-pointer hover:shadow-md transition-shadow duration-200",
+                        inputFilters.no_assignee && "ring-2 ring-primary")}
+                    onClick={() => handleGapClick('no_assignee')}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-                        <Clock className="h-4 w-4 text-green-600"/>
+                        <CardTitle className="text-sm font-medium">Assignee Not Selected</CardTitle>
+                        <UserX className="h-4 w-4 text-green-600"/>
                     </CardHeader>
                     <CardContent>
                         {isLoading ? (
@@ -1232,15 +1193,16 @@ const handleBulkConfirmInitialsBy = async () => {
                             </div>
                         ) : (
                             <>
-                                <div className="text-2xl font-bold">{getStatCount("In Progress")}</div>
-                                <p className="text-xs text-muted-foreground">Work Ongoing</p>
+                                <div className="text-2xl font-bold">{gapCounts.assignee_not_selected}</div>
+                                <p className="text-xs text-muted-foreground">Letters without an assignee</p>
                             </>
                         )}
                     </CardContent>
                 </Card>
+
                 <Card
                     className={`cursor-pointer hover:shadow-md transition-shadow duration-200 ${
-                        getStatCount("Not Relevant") > 0   // CHANGED
+                        getStatCount("Not Relevant") > 0
                             ? "bg-rose-300 dark:bg-rose-800 animate-pulse border-red-200"
                             : ""
                     }`}
@@ -1273,7 +1235,6 @@ const handleBulkConfirmInitialsBy = async () => {
                     </div>
                     {!isLoading && (
                         <div className="flex space-x-2">
-                            {/* NEW — Export Selected, only shown once at least one row is checked */}
                             {selectedIds.length > 0 && (
                                 <Button
                                     variant="outline"
@@ -1322,18 +1283,15 @@ const handleBulkConfirmInitialsBy = async () => {
                                         organization: "Sender/Organization of the letter",
                                         department: "Section",
                                         assignee: "Assignee",
-                                        assigneeStatus: "Assignee Status",       // CHANGED — moved next to Assignee; replaces the old overall Status column
+                                        assigneeStatus: "Assignee Status",
                                         date: "Received Date",
                                         other: "Cheque No / Money Order No",
-                                        chequeStatus: "Cheque Deposit Status",   // NEW
-                                        fileName: "File Name",                   // NEW
+                                        chequeStatus: "Cheque Deposit Status",
+                                        fileName: "File Number",
                                     }).map(([key, label]) => (
                                         <DropdownMenuCheckboxItem
                                             key={key}
                                             checked={columnVisibility[key as keyof ColumnVisibility]}
-                                            // NEW — without this, Radix closes the dropdown after every
-                                            // single click, so a user could never tick more than one
-                                            // column on/off in a row.
                                             onSelect={(e) => e.preventDefault()}
                                             onCheckedChange={(checked) =>
                                                 setColumnVisibility((prev) => ({...prev, [key]: checked}))
@@ -1350,12 +1308,32 @@ const handleBulkConfirmInitialsBy = async () => {
                 <CardContent>
                     <div className="space-y-4">
                         <div>
+                            {(inputFilters.no_section || inputFilters.no_assignee || inputFilters.status_id !== 0) && (
+                                <div className="flex flex-wrap items-center gap-2 mb-4">
+                                    <span className="text-xs text-muted-foreground">Active card filter:</span>
+                                    {inputFilters.no_section && (
+                                        <Badge variant="secondary" className="gap-1">
+                                            Section not selected
+                                            <button type="button" onClick={() => clearFilter('no_section')} aria-label="Clear"><X className="h-3 w-3"/></button>
+                                        </Badge>
+                                    )}
+                                    {inputFilters.no_assignee && (
+                                        <Badge variant="secondary" className="gap-1">
+                                            Assignee not selected
+                                            <button type="button" onClick={() => clearFilter('no_assignee')} aria-label="Clear"><X className="h-3 w-3"/></button>
+                                        </Badge>
+                                    )}
+                                    {inputFilters.status_id !== 0 && (
+                                        <Badge variant="secondary" className="gap-1">
+                                            Status: {statuses.find(st => st.id === inputFilters.status_id)?.name}
+                                            <button type="button" onClick={() => clearFilter('status_id')} aria-label="Clear"><X className="h-3 w-3"/></button>
+                                        </Badge>
+                                    )}
+                                </div>
+                            )}
+
                             {showFilters && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-4">
-                                    {/* REMOVED — "Search by ID" filter. Replaced below with
-                                        always-available Assignee & Department search filters,
-                                        independent of whether those columns are shown in the table. */}
-
                                     {columnVisibility.code && (
                                         <div className="relative">
                                             <Input
@@ -1418,8 +1396,7 @@ const handleBulkConfirmInitialsBy = async () => {
                                             )}
                                         </div>
                                     )}
-                                    {/* NEW — Search by Department, always available regardless of
-                                        whether the Department column itself is toggled on */}
+                                    {/* Search by Department (Section) */}
                                     <div className="relative">
                                         <Select
                                             value={inputFilters.department_id !== 0 ? inputFilters.department_id.toString() : ""}
@@ -1444,9 +1421,7 @@ const handleBulkConfirmInitialsBy = async () => {
                                             </Button>
                                         )}
                                     </div>
-                                    {/* CHANGED — Search by Assignee is now a searchable combobox
-                                        (type-to-filter) instead of a plain scrollable dropdown,
-                                        same pattern used for Organization elsewhere in the app. */}
+                                    {/* Search by Assignee (searchable combobox) */}
                                     <div className="relative">
                                         <Popover open={assigneeFilterOpen} onOpenChange={setAssigneeFilterOpen}>
                                             <PopoverTrigger asChild>
@@ -1512,24 +1487,29 @@ const handleBulkConfirmInitialsBy = async () => {
                                     </div>
                                     {columnVisibility.date && (
                                         <div>
-                                            {/* CHANGED — now filters by Received Date */}
+                                            {/* CHANGED — the END date is now set to 23:59:59.999 of that day
+                                                (and the start to 00:00:00). Before, the end was local midnight,
+                                                so letters received ON the last picked day were cut off, and a
+                                                same-day pick matched nothing. */}
                                             <DatePickerWithRange
                                                 date={{
                                                     from: inputFilters.create_date_start ? new Date(inputFilters.create_date_start) : undefined,
                                                     to: inputFilters.create_date_end ? new Date(inputFilters.create_date_end) : undefined,
                                                 }}
-                                                onChange={(range) => setInputFilters((prev) => ({
-                                                    ...prev,
-                                                    create_date_start: range?.from ? new Date(range.from).toISOString() : null,
-                                                    create_date_end: range?.to ? new Date(range.to).toISOString() : null,
-                                                }))}
+                                                onChange={(range) => setInputFilters((prev) => {
+                                                    const from = range?.from ? new Date(range.from) : null;
+                                                    const to = range?.to ? new Date(range.to) : (from ? new Date(from) : null);
+                                                    from?.setHours(0, 0, 0, 0);
+                                                    to?.setHours(23, 59, 59, 999);
+                                                    return {
+                                                        ...prev,
+                                                        create_date_start: from ? from.toISOString() : null,
+                                                        create_date_end: to ? to.toISOString() : null,
+                                                    };
+                                                })}
                                             />
                                         </div>
                                     )}
-                                    {/* CHANGED — this now filters by an individual ASSIGNEE'S
-                                        status instead of the letter's overall status, matching
-                                        the dashboard's move to per-assignee statuses everywhere
-                                        else (Assignee Status column, days-pending badge, etc). */}
                                     <div className="relative">
                                         <Select
                                             value={inputFilters.assignee_status_id !== 0 ? inputFilters.assignee_status_id.toString() : ""}
@@ -1572,7 +1552,6 @@ const handleBulkConfirmInitialsBy = async () => {
                                             )}
                                         </div>
                                     )}
-                                    {/* NEW — Has Cheque / Money Order filter */}
                                     <div className="flex items-center space-x-2 border rounded-md px-3 h-10">
                                         <Checkbox
                                             id="filter-has-cheque"
@@ -1585,29 +1564,49 @@ const handleBulkConfirmInitialsBy = async () => {
                                             Has Cheque / Money Order
                                         </label>
                                     </div>
-                                    {/* NEW — Public Complaint filter */}
-<div className="relative">
-    <Select
-        value={inputFilters.is_public_complaint === null ? "all" : inputFilters.is_public_complaint ? "yes" : "no"}
-        onValueChange={(value) => setInputFilters(prev => ({
-            ...prev,
-            is_public_complaint: value === "all" ? null : value === "yes",
-        }))}
-    >
-        <SelectTrigger className="w-full">
-            <SelectValue placeholder="Public Complaint"/>
-        </SelectTrigger>
-        <SelectContent>
-            <SelectItem value="all">All Letters</SelectItem>
-            <SelectItem value="yes">Public Complaints Only</SelectItem>
-            <SelectItem value="no">Not Public Complaints</SelectItem>
-        </SelectContent>
-    </Select>
-</div>
-                                    {/* CHANGED — was a plain "Pending Only" checkbox. Now a
-                                        dropdown of day ranges, so someone can find e.g. only
-                                        letters that have been pending 1-5 days, not just "any
-                                        pending letter" with no way to narrow by how overdue it is. */}
+
+                                    {/* NEW — Section / Assignee not selected filters (also toggled by the cards) */}
+                                    <div className="flex items-center space-x-2 border rounded-md px-3 h-10">
+                                        <Checkbox
+                                            id="f-no-section"
+                                            checked={inputFilters.no_section}
+                                            onCheckedChange={(c) => setInputFilters(p => ({...p, no_section: !!c}))}
+                                        />
+                                        <label htmlFor="f-no-section" className="text-sm cursor-pointer whitespace-nowrap">
+                                            Section not selected
+                                        </label>
+                                    </div>
+                                    <div className="flex items-center space-x-2 border rounded-md px-3 h-10">
+                                        <Checkbox
+                                            id="f-no-assignee"
+                                            checked={inputFilters.no_assignee}
+                                            onCheckedChange={(c) => setInputFilters(p => ({...p, no_assignee: !!c}))}
+                                        />
+                                        <label htmlFor="f-no-assignee" className="text-sm cursor-pointer whitespace-nowrap">
+                                            Assignee not selected
+                                        </label>
+                                    </div>
+
+                                    {/* Public Complaint filter */}
+                                    <div className="relative">
+                                        <Select
+                                            value={inputFilters.is_public_complaint === null ? "all" : inputFilters.is_public_complaint ? "yes" : "no"}
+                                            onValueChange={(value) => setInputFilters(prev => ({
+                                                ...prev,
+                                                is_public_complaint: value === "all" ? null : value === "yes",
+                                            }))}
+                                        >
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Public Complaint"/>
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All Letters</SelectItem>
+                                                <SelectItem value="yes">Public Complaints Only</SelectItem>
+                                                <SelectItem value="no">Not Public Complaints</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    {/* Pending days range */}
                                     <div className="relative">
                                         <Select
                                             value={
@@ -1656,19 +1655,6 @@ const handleBulkConfirmInitialsBy = async () => {
                                 </div>
                             )}
 
-                            {/*
-                                CHANGED — table scroll behaviour:
-                                - `containerClassName` (added to the shared Table component,
-                                  see ui/table.tsx below) caps the table's own wrapper to a
-                                  viewport-relative height and scrolls vertically INSIDE it,
-                                  so the page itself no longer scrolls while browsing rows.
-                                - `overflow-x-hidden` on that same wrapper removes the
-                                  left-right scrollbar — combined with `table-fixed` +
-                                  percentage column widths below, every column now fits
-                                  within the card's width instead of overflowing sideways.
-                                - The header row is made `sticky top-0` with an opaque
-                                  background so it stays pinned while the body scrolls.
-                            */}
                             <div className="rounded-md border">
                                 <Table
                                     containerClassName="max-h-[65vh] overflow-y-auto overflow-x-hidden relative"
@@ -1676,35 +1662,26 @@ const handleBulkConfirmInitialsBy = async () => {
                                 >
                                     <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
                                         <TableRow>
-                                            {/* NEW — select-all checkbox for the current page */}
                                             <TableHead className="w-[4%] text-center">
                                                 <Checkbox
                                                     checked={allOnPageSelected}
                                                     onCheckedChange={(checked) => toggleSelectAllOnPage(!!checked)}
                                                     aria-label="Select all letters on this page"
                                                     disabled={letters.length === 0}
-                                                    // CHANGED — thicker, more visible border so the
-                                                    // checkbox doesn't disappear against the header background
                                                     className="border-2 border-slate-400 dark:border-slate-500 data-[state=checked]:border-primary"
                                                 />
                                             </TableHead>
                                             {columnVisibility.id && <TableHead className="w-[3%] text-center">ID</TableHead>}
                                             {columnVisibility.code && <TableHead className="w-[9%]">Code</TableHead>}
                                             {columnVisibility.organization && <TableHead className="w-[10%]">Sender/Organization of the letter</TableHead>}
-                                            {/* CHANGED — width reduced from an unbounded min-w so the column
-                                                no longer forces horizontal scroll; content wraps and grows the
-                                                row's height instead (see the body cell below). */}
                                             {columnVisibility.title && <TableHead className="w-[14%]">Subject/Content of the Letter</TableHead>}
                                             {columnVisibility.department && <TableHead className="w-[9%]">Section</TableHead>}
                                             {columnVisibility.assignee && <TableHead className="w-[9%]">Assignee</TableHead>}
-                                            {/* CHANGED — Assignee Status now sits right next to Assignee,
-                                                replacing the old overall letter-status column entirely. */}
                                             {columnVisibility.assigneeStatus && <TableHead className="w-[12%]">Assignee Status</TableHead>}
                                             {columnVisibility.date && <TableHead className="w-[8%]">Received Date</TableHead>}
                                             {columnVisibility.other && <TableHead className="w-[8%]">Cheque no /Money Order No</TableHead>}
                                             {columnVisibility.chequeStatus && <TableHead className="w-[8%] text-center">Cheque Status</TableHead>}
-                                            {columnVisibility.fileName && <TableHead className="w-[8%]">File Name</TableHead>}
-                                            {/* Actions column — always visible */}
+                                            {columnVisibility.fileName && <TableHead className="w-[8%]">File Number</TableHead>}
                                             <TableHead className="w-[8%] text-center">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -1727,27 +1704,16 @@ const handleBulkConfirmInitialsBy = async () => {
                                         <TableBody>
                                             {letters.map((item, index) => (
                                                 <TableRow key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                                                    {/* NEW — row selection checkbox */}
                                                     <TableCell className="text-center w-[4%] align-top">
                                                         <Checkbox
                                                             checked={selectedIds.includes(item.id)}
                                                             onCheckedChange={(checked) => toggleSelectRow(item.id, !!checked)}
                                                             aria-label={`Select letter ${item.code}`}
-                                                            // CHANGED — thicker, more visible border, matching the
-                                                            // header's select-all checkbox
                                                             className="border-2 border-slate-400 dark:border-slate-500 data-[state=checked]:border-primary"
                                                         />
                                                     </TableCell>
                                                     {columnVisibility.id && (
                                                         <TableCell className="text-center w-[3%] align-top">
-                                                            {/*
-                                                                The list is sorted newest-first. Instead of a plain
-                                                                ascending row index (which would label the newest
-                                                                letter "1"), we number it as its actual position in
-                                                                the full sequence: the newest letter gets `totalRows`,
-                                                                the oldest gets `1` — so the newest-created letter's
-                                                                number matches how many letters exist in total.
-                                                            */}
                                                             {totalRows - ((currentPage - 1) * pageSize + index)}
                                                         </TableCell>
                                                     )}
@@ -1761,10 +1727,6 @@ const handleBulkConfirmInitialsBy = async () => {
                                                             <div className="whitespace-pre-wrap break-words">{item.organization || "—"}</div>
                                                         </TableCell>
                                                     )}
-                                                    {/* CHANGED — full Subject/Content is now shown in the table
-                                                        instead of being truncated to one line; text wraps within
-                                                        the (now narrower) column, so the row's height grows to fit
-                                                        the content instead of the table growing wider. */}
                                                     {columnVisibility.title && (
                                                         <TableCell className="w-[14%] align-top">
                                                             <div className="whitespace-pre-wrap break-words">{item.subject}</div>
@@ -1777,9 +1739,6 @@ const handleBulkConfirmInitialsBy = async () => {
                                                     )}
                                                     {columnVisibility.assignee && (
                                                         <TableCell className="w-[8%] align-top">
-                                                            {/* CHANGED — each assignee name on its own line
-                                                                instead of one comma-joined line, matching how
-                                                                the Assignee Status column lists them below. */}
                                                             {item.assignee ? (
                                                                 <div className="space-y-0.5">
                                                                     {item.assignee.split(',').map((name, i) => (
@@ -1789,10 +1748,6 @@ const handleBulkConfirmInitialsBy = async () => {
                                                             ) : "—"}
                                                         </TableCell>
                                                     )}
-                                                    {/* CHANGED — Assignee Status now sits right next to Assignee
-                                                        (matching the header), and each badge is colored by its
-                                                        OWN status via getStatusClassName instead of everything
-                                                        rendering in one flat purple color. */}
                                                     {columnVisibility.assigneeStatus && (
                                                         <TableCell className="w-[12%] align-top">
                                                             {item.assignee_statuses && item.assignee_statuses.length > 0 ? (
@@ -1810,42 +1765,33 @@ const handleBulkConfirmInitialsBy = async () => {
                                                             )}
                                                         </TableCell>
                                                     )}
-                                                    {/* CHANGED — Date column now shows the letter's actual
-                                                        Received Date (falls back to create_datetime only if
-                                                        received_datetime isn't present on older records), and
-                                                        the days-pending badge still counts from Received Date
-                                                        and freezes once ALL assignees are "Completed". */}
                                                     {(() => {
                                                         const isFullyCompleted = item.assignee_statuses && item.assignee_statuses.length > 0
                                                             ? item.assignee_statuses.every(s => s.status_name === 'Completed')
                                                             : item.status === 'Completed';
                                                         return columnVisibility.date && (
-                                                        <TableCell className="w-[8%] align-top">
-                                                            <div className="break-words">{formatDate(item.received_datetime || item.create_datetime)}</div>
-                                                            {typeof item.days_pending === 'number' && (
-                                                                <div
-                                                                    className={`text-xs mt-0.5 ${
-                                                                        isFullyCompleted
-                                                                            ? 'text-muted-foreground'
-                                                                            : 'text-amber-600 dark:text-amber-400'
-                                                                    }`}
-                                                                    title={isFullyCompleted ? 'Days it took to complete' : 'Days pending so far'}
-                                                                >
-                                                                    {isFullyCompleted ? '✓ ' : ''}{item.days_pending}d {isFullyCompleted ? 'to complete' : 'pending'}
-                                                                </div>
-                                                            )}
-                                                        </TableCell>
+                                                            <TableCell className="w-[8%] align-top">
+                                                                <div className="break-words">{formatDate(item.received_datetime || item.create_datetime)}</div>
+                                                                {typeof item.days_pending === 'number' && (
+                                                                    <div
+                                                                        className={`text-xs mt-0.5 ${
+                                                                            isFullyCompleted
+                                                                                ? 'text-muted-foreground'
+                                                                                : 'text-amber-600 dark:text-amber-400'
+                                                                        }`}
+                                                                        title={isFullyCompleted ? 'Days it took to complete' : 'Days pending so far'}
+                                                                    >
+                                                                        {isFullyCompleted ? '✓ ' : ''}{item.days_pending}d {isFullyCompleted ? 'to complete' : 'pending'}
+                                                                    </div>
+                                                                )}
+                                                            </TableCell>
                                                         );
                                                     })()}
-                                                    {/* Status column REMOVED — replaced by the Assignee Status
-                                                        column below, which shows each assignee's own status
-                                                        (colored per status) instead of one overall letter status. */}
                                                     {columnVisibility.other && (
                                                         <TableCell className="w-[8%] align-top">
                                                             <div className="whitespace-pre-wrap break-words">{item.other || "—"}</div>
                                                         </TableCell>
                                                     )}
-                                                    {/* NEW — Cheque deposit status badge, with details on hover */}
                                                     {columnVisibility.chequeStatus && (
                                                         <TableCell className="text-center w-[8%] align-top">
                                                             {item.other ? (
@@ -1868,13 +1814,6 @@ const handleBulkConfirmInitialsBy = async () => {
                                                             )}
                                                         </TableCell>
                                                     )}
-                                                    {/* CHANGED — File Name is now per-assignee (each assignee's
-                                                        own file_name, set when they set a status like "Completed"
-                                                        that required one), same pattern as Assignee Status.
-                                                        The old single `completion_file_name` field was never
-                                                        populated by per-assignee status updates, which is why
-                                                        this column used to always show "—" even after a letter
-                                                        had a file name recorded in the Letter View page. */}
                                                     {columnVisibility.fileName && (
                                                         <TableCell className="w-[8%] align-top">
                                                             {item.assignee_statuses && item.assignee_statuses.some(s => s.file_name) ? (
@@ -1893,11 +1832,6 @@ const handleBulkConfirmInitialsBy = async () => {
                                                     {/* Actions cell */}
                                                     <TableCell className="text-center w-[8%] align-top">
                                                         <div className="flex items-center justify-center gap-1">
-                                                            {/* NEW — View button now carries a small remarks-count
-                                                                notify badge (only shown when count > 0), so people
-                                                                can tell at a glance which letters have discussion
-                                                                without opening each one. Subtle pulse draws the eye
-                                                                without being obnoxious across a whole page of rows. */}
                                                             <div className="relative">
                                                                 <Button
                                                                     variant="ghost"
@@ -1916,43 +1850,35 @@ const handleBulkConfirmInitialsBy = async () => {
                                                                         {item.remarks_count}
                                                                     </span>
                                                                 )}
-                                                                
                                                             </div>
-                                                            {/* NEW — Initials By pending notify: only shows to the person it's actually waiting on */}
-{item.initials_by_pending?.id === user?.id && (
-    <div className="relative">
-        <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-amber-600 hover:text-amber-700"
-            onClick={() => router.push(`/letters/${item.id}`)}
-            aria-label={`Initials confirmation pending for letter ${item.code}`}
-            title="Waiting for your initials confirmation"
-        >
-            <PenLine className="h-4 w-4"/>
-        </Button>
-        <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse"/>
-    </div>
-)}
+                                                            {item.initials_by_pending?.id === user?.id && (
+                                                                <div className="relative">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-8 w-8 text-amber-600 hover:text-amber-700"
+                                                                        onClick={() => router.push(`/letters/${item.id}`)}
+                                                                        aria-label={`Initials confirmation pending for letter ${item.code}`}
+                                                                        title="Waiting for your initials confirmation"
+                                                                    >
+                                                                        <PenLine className="h-4 w-4"/>
+                                                                    </Button>
+                                                                    <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse"/>
+                                                                </div>
+                                                            )}
 
-{/* CHANGED — Order By missing notify: now opens the QuickOrderByDialog
-    directly instead of navigating to the full Letter View page, so it can
-    be set right from the list. */}
-{hasPermission('letter.order_by') && (!item.order_by_role || !item.order_by_action) && (
-    <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 text-purple-600 hover:text-purple-700"
-        onClick={() => setLetterToQuickOrderBy(item)}
-        aria-label={`Order By incomplete for letter ${item.code}`}
-        title="Order By not yet set — click to set it"
-    >
-        <Stamp className="h-4 w-4"/>
-    </Button>
-)}
-                                                            {/* NEW — quick-edit shortcut: change department/assignee/
-                                                                organization/subject right from the table, without
-                                                                opening the full letter view */}
+                                                            {hasPermission('letter.order_by') && (!item.order_by_role || !item.order_by_action) && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 text-purple-600 hover:text-purple-700"
+                                                                    onClick={() => setLetterToQuickOrderBy(item)}
+                                                                    aria-label={`Order By incomplete for letter ${item.code}`}
+                                                                    title="Order By not yet set — click to set it"
+                                                                >
+                                                                    <Stamp className="h-4 w-4"/>
+                                                                </Button>
+                                                            )}
                                                             {(hasPermission('letter.change_department') || hasPermission('letter.assign')) && (
                                                                 <Button
                                                                     variant="ghost"
@@ -2079,23 +2005,15 @@ const handleBulkConfirmInitialsBy = async () => {
                 isDeleting={isDeleting}
             />
 
-            {/* NEW — quick edit dialog, triggered from the pencil icon in Actions.
-                CHANGED — now receives `organizations` instead of `statuses`,
-                since Status was removed from this dialog in favor of
-                Organization + Subject/Content of the Letter. Now also
-                includes the Initials By section internally (see the
-                QuickEditLetterDialog component above). */}
             <QuickEditLetterDialog
                 letter={letterToQuickEdit}
-                departmentAccounts={departmentAccounts} 
+                departmentAccounts={departmentAccounts}
                 assignees={assignees}
                 organizations={organizations}
                 onClose={() => setLetterToQuickEdit(null)}
                 onSaved={handleRefresh}
             />
 
-            {/* NEW — quick Order By dialog, triggered from the Stamp icon in
-                Actions instead of navigating to the full Letter View page. */}
             <QuickOrderByDialog
                 letter={letterToQuickOrderBy}
                 onClose={() => setLetterToQuickOrderBy(null)}
@@ -2103,29 +2021,29 @@ const handleBulkConfirmInitialsBy = async () => {
             />
 
             <Dialog open={showBulkConfirmDialog} onOpenChange={(open) => { if (!open && !isBulkConfirming) setShowBulkConfirmDialog(false); }}>
-    <DialogContent className="sm:max-w-[440px]">
-        <DialogHeader>
-            <DialogTitle>Confirm Initials By</DialogTitle>
-            <DialogDescription>
-                Confirms your initials on {selectedPendingForMeCount} letter{selectedPendingForMeCount !== 1 ? 's' : ''} that are pending your confirmation. The same notes will be applied to all of them.
-            </DialogDescription>
-        </DialogHeader>
-        <textarea
-            value={bulkConfirmNotes}
-            onChange={(e) => setBulkConfirmNotes(e.target.value)}
-            rows={3}
-            placeholder="Notes (optional, applies to all selected letters)"
-            className="w-full rounded-md border px-3 py-2 text-sm resize-none"
-            disabled={isBulkConfirming}
-        />
-        <DialogFooter>
-            <Button variant="outline" onClick={() => setShowBulkConfirmDialog(false)} disabled={isBulkConfirming}>Cancel</Button>
-            <Button onClick={handleBulkConfirmInitialsBy} disabled={isBulkConfirming}>
-                {isBulkConfirming ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Confirming...</> : "Confirm All"}
-            </Button>
-        </DialogFooter>
-    </DialogContent>
-</Dialog>
+                <DialogContent className="sm:max-w-[440px]">
+                    <DialogHeader>
+                        <DialogTitle>Confirm Initials By</DialogTitle>
+                        <DialogDescription>
+                            Confirms your initials on {selectedPendingForMeCount} letter{selectedPendingForMeCount !== 1 ? 's' : ''} that are pending your confirmation. The same notes will be applied to all of them.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <textarea
+                        value={bulkConfirmNotes}
+                        onChange={(e) => setBulkConfirmNotes(e.target.value)}
+                        rows={3}
+                        placeholder="Notes (optional, applies to all selected letters)"
+                        className="w-full rounded-md border px-3 py-2 text-sm resize-none"
+                        disabled={isBulkConfirming}
+                    />
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowBulkConfirmDialog(false)} disabled={isBulkConfirming}>Cancel</Button>
+                        <Button onClick={handleBulkConfirmInitialsBy} disabled={isBulkConfirming}>
+                            {isBulkConfirming ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Confirming...</> : "Confirm All"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import {useEffect, useState} from "react";
@@ -56,7 +55,6 @@ import {
 } from "@/components/ui/dialog";
 import {UpdateUserModal} from "@/app/(dashboard)/user/users/update-user-modal";
 import {DesignationManagerDialog} from "@/app/(dashboard)/user/users/designation-manager-dialog";
-import {useDebounce} from "@/hook/debounce";
 import {EmployeeNameManagerDialog} from "@/app/(dashboard)/user/users/employee-name-manager-dialog";
 import api from "@/lib/api";
 import {AddDepartmentAccountModal} from "@/app/(dashboard)/user/users/add-department-account-modal";
@@ -90,17 +88,18 @@ interface EmployeeName {
     full_name: string;
     is_active?: boolean;
 }
+
 interface User {
     id: number;
     email: string;
     first_name: string;
     last_name: string;
     department: string | null;
-    department_unit: string | null;   // NEW
+    department_unit: string | null;
     role: string | null;
     designation: string | null;
     status: string;
-    is_department_account: boolean;   // NEW — true for department/sub-unit shared accounts
+    is_department_account: boolean;   // true for department/sub-unit shared accounts
 }
 
 interface UserFilters {
@@ -132,10 +131,10 @@ interface UserHistoryEntry {
     create_datetime: string;
 }
 
-// NEW — top-level tab: split the system users list by user category.
-// 'main'       -> users with no department assigned (system-level users)
-// 'department' -> users assigned to a department but no sub-unit
-// 'subunit'    -> users assigned to a department sub-unit
+// top-level tab: split the system users list by user category.
+// 'main'       -> ordinary employee accounts
+// 'department' -> shared section (department) login accounts
+// 'subunit'    -> shared sub-unit login accounts
 type UserTab = 'main' | 'department' | 'subunit';
 
 const userTabs: {value: UserTab; label: string}[] = [
@@ -160,6 +159,9 @@ const statuses = [
     {id: 0, name: "Inactive", value: false},
 ]
 
+// lower-case + trim, so every text comparison below ignores case and stray spaces
+const norm = (value?: string | null): string => (value ?? '').toLowerCase().trim();
+
 // Formats a naive UTC datetime string coming from the backend
 // (func.utc_timestamp()) into the user's local time.
 const formatDateTime = (dateStr: string | null | undefined) => {
@@ -178,16 +180,16 @@ const formatDateTime = (dateStr: string | null | undefined) => {
 };
 
 export default function UsersPage() {
-    // NEW — which user-category tab is active
+    // which user-category tab is active
     const [activeTab, setActiveTab] = useState<UserTab>('main');
 
     // State for API data
     const [departments, setDepartments] = useState<Department[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
     const [designations, setDesignations] = useState<Designation[]>([]);
-    // NEW — allUsers holds every user matching the current text/select filters
-    // (fetched once, unpaginated by the server). Tab split + pagination happen
-    // client-side below, since the backend has no user_type/department-null filter.
+    // allUsers holds EVERY user. The filters, the tab split and the pagination
+    // are all applied in the browser below, so they work the same no matter how
+    // the backend list endpoint treats its filter fields.
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [refreshTrigger, setRefreshTrigger] = useState(true);
@@ -195,8 +197,8 @@ export default function UsersPage() {
     const [inactiveUserCount, setInactiveUserCount] = useState(0);
     const [totalUserCount, setTotalUserCount] = useState(0);
     const [employeeNames, setEmployeeNames] = useState<EmployeeName[]>([]);
-const [isNameModalOpen, setIsNameModalOpen] = useState(false);
-const [isDeptAccountModalOpen, setIsDeptAccountModalOpen] = useState(false);
+    const [isNameModalOpen, setIsNameModalOpen] = useState(false);
+    const [isDeptAccountModalOpen, setIsDeptAccountModalOpen] = useState(false);
 
     // State for user modal
     const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
@@ -217,29 +219,23 @@ const [isDeptAccountModalOpen, setIsDeptAccountModalOpen] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState<UserFilters>(defaultFilters);
 
-    // Apply debouncing to filters to prevent excessive API calls
-    const debouncedFilters = useDebounce(filters, 500); // 500ms debounce time
-
-    // State for pagination (totalPages/totalRows are now derived below, after usersForTab is computed)
+    // State for pagination
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const pageSizeOptions = [5, 10, 20, 50];
 
     // Column visibility state
-    const [columnVisibility, setColumnVisibility] = useState({
-    id: true,
-    first_name: true,
-    last_name: true,
-    email: true,
-    role: true,
-    department: true,
-    department_unit: true,   // NEW
-    designation: true,
-    status: true,
-});
-
-    
-
+    const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
+        id: true,
+        first_name: true,
+        last_name: true,
+        email: true,
+        role: true,
+        department: true,
+        department_unit: true,
+        designation: true,
+        status: true,
+    });
 
     // Fetch stats
     useEffect(() => {
@@ -323,25 +319,22 @@ const [isDeptAccountModalOpen, setIsDeptAccountModalOpen] = useState(false);
     };
 
     const fetchEmployeeNames = async () => {
-    try {
-        const response = await api.get('/v1/employee_name/list');
-        setEmployeeNames(response.data.data);
-    } catch (error) {
-        console.error("Error fetching names:", error);
-        toast.error(error.response?.data.message || 'Something went wrong. Please try again');
-    }
-};
+        try {
+            const response = await api.get('/v1/employee_name/list');
+            setEmployeeNames(response.data.data);
+        } catch (error) {
+            console.error("Error fetching names:", error);
+            toast.error(error.response?.data.message || 'Something went wrong. Please try again');
+        }
+    };
 
+    useEffect(() => {
+        fetchEmployeeNames().catch((error) => console.error("Error in fetchEmployeeNames:", error));
+    }, []);
 
-
-  useEffect(() => {
-    fetchEmployeeNames().catch((error) => console.error("Error in fetchEmployeeNames:", error));
-}, []);
-
-const handleNamesChanged = () => {
-    fetchEmployeeNames().catch((error) => console.error("Error in fetchEmployeeNames:", error));
-};
-
+    const handleNamesChanged = () => {
+        fetchEmployeeNames().catch((error) => console.error("Error in fetchEmployeeNames:", error));
+    };
 
     useEffect(() => {
         fetchDesignations().catch(
@@ -351,31 +344,22 @@ const handleNamesChanged = () => {
         )
     }, []);
 
-  
-
-
-
-    // Fetch all users matching the current text/select filters (no backend
-    // user_type support, so we pull everything the filters match in one go
-    // and do the tab split + pagination in the browser below).
-    // NOTE: uses a large page_size against the existing /list endpoint — no
-    // backend changes required. If the user table grows very large, this is
-    // the tradeoff to revisit (would need a real backend user_type filter).
+    // Fetch ALL users once (and again after any change). NO filter values are
+    // sent to the backend any more — filtering is done below in the browser,
+    // so it can't be affected by how the backend treats its filter fields.
     useEffect(() => {
         const fetchUsers = async () => {
             setIsLoading(true);
             try {
-                const url = `/v1/system_user/list?page=1&page_size=100000`;
-
-                const response = await api.post(url, {
-                    id: debouncedFilters.id || 0,
-                    email: debouncedFilters.email || "",
-                    first_name: debouncedFilters.first_name || "",
-                    last_name: debouncedFilters.last_name || "",
-                    department_id: debouncedFilters.department_id || 0,
-                    role_id: debouncedFilters.role_id || 0,
-                    designation_id: debouncedFilters.designation_id || 0,
-                    is_active: debouncedFilters.is_active,
+                const response = await api.post(`/v1/system_user/list?page=1&page_size=100000`, {
+                    id: 0,
+                    email: "",
+                    first_name: "",
+                    last_name: "",
+                    department_id: 0,
+                    role_id: 0,
+                    designation_id: 0,
+                    is_active: null,
                 });
                 const data: PaginatedResponse<User> = await response.data;
 
@@ -394,29 +378,55 @@ const handleNamesChanged = () => {
                 console.error("Error in fetchUsers:", error);
             }
         )
-    }, [debouncedFilters, refreshTrigger]);
+    }, [refreshTrigger]);
 
-    // NEW — client-side tab split: classify each fetched user by is_department_account
-    // + department_unit presence. Regular employees (is_department_account === false)
-    // can still have a department/sub-unit assigned to them, so department alone
-    // isn't the discriminator — 'main' just means "not a shared department/sub-unit login".
-    const usersForTab = allUsers.filter((user) => {
+    // Filter by the search boxes / dropdowns (all combined, AND). Text boxes are
+    // "contains", ignoring case. Role / Section / Designation are matched on the
+    // NAME shown in the table.
+    const roleFilterName = filters.role_id ? norm(roles.find(r => r.id === filters.role_id)?.name) : "";
+    const deptFilterName = filters.department_id ? norm(departments.find(d => d.id === filters.department_id)?.name) : "";
+    const designationFilterName = filters.designation_id ? norm(designations.find(d => d.id === filters.designation_id)?.name) : "";
+
+    const filteredUsers = allUsers.filter((user) => {
+        if (filters.id && user.id !== filters.id) return false;
+
+        // the "Name" box searches the full name (first + last), so "Shalika Hennayaka" works too
+        if (filters.first_name.trim()) {
+            const fullName = norm(`${user.first_name} ${user.last_name || ''}`);
+            if (!fullName.includes(norm(filters.first_name))) return false;
+        }
+        if (filters.last_name.trim() && !norm(user.last_name).includes(norm(filters.last_name))) return false;
+        if (filters.email.trim() && !norm(user.email).includes(norm(filters.email))) return false;
+
+        if (filters.role_id && norm(user.role) !== roleFilterName) return false;
+        if (filters.department_id && norm(user.department) !== deptFilterName) return false;
+        if (filters.designation_id && norm(user.designation) !== designationFilterName) return false;
+
+        if (filters.is_active !== null && user.status !== (filters.is_active ? "Active" : "Inactive")) return false;
+
+        return true;
+    });
+
+    // client-side tab split: classify each user by is_department_account + department_unit.
+    // Regular employees can still have a department/sub-unit, so 'main' just means
+    // "not a shared department/sub-unit login".
+    const usersForTab = filteredUsers.filter((user) => {
         if (activeTab === 'subunit') return user.is_department_account && !!user.department_unit;
         if (activeTab === 'department') return user.is_department_account && !user.department_unit;
         return !user.is_department_account; // 'main' — ordinary employees
     });
 
-    // NEW — client-side pagination over the tab-filtered list
+    // client-side pagination over the tab-filtered list
     const totalRows = usersForTab.length;
     const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
     const users = usersForTab.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-    // Reset to page 1 when filters or the active tab change
+    // Back to page 1 whenever the filters, the tab or the page size change
     useEffect(() => {
         setCurrentPage(1);
-    }, [debouncedFilters, activeTab, pageSize]);
+    }, [filters, activeTab, pageSize]);
 
-    // NEW — switch user-category tab (also clears any active filters so the new tab starts clean)
+    // switch user-category tab (also clears any active filters so the new tab starts clean)
     const handleTabChange = (tab: UserTab) => {
         if (tab === activeTab) return;
         setActiveTab(tab);
@@ -438,7 +448,6 @@ const handleNamesChanged = () => {
         }
     };
 
-    // Designation manager modal — refetch designations (and users, since labels may change) after any change
     const designationModalHandler = (isOpen: boolean) => {
         setIsDesignationModalOpen(isOpen);
     };
@@ -472,7 +481,6 @@ const handleNamesChanged = () => {
         userId: 0,
     });
 
-    // Delete user handler
     const handleDelete = (userId: number) => {
         setDeleteUserAlert({
             isOpen: true,
@@ -480,10 +488,8 @@ const handleNamesChanged = () => {
         });
     };
 
-    // Delete user confirm
     const handleDeleteConfirm = async () => {
         try {
-            // Implement your delete API call here
             const response = await api.delete(`/v1/system_user/${deleteUserAlert.userId}`, {
                 method: 'DELETE',
             });
@@ -510,7 +516,7 @@ const handleNamesChanged = () => {
         const pageNumbers = [];
         const maxVisiblePages = 5;
         let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-        let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+        const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
 
         if (endPage - startPage + 1 < maxVisiblePages) {
             startPage = Math.max(1, endPage - maxVisiblePages + 1);
@@ -527,7 +533,9 @@ const handleNamesChanged = () => {
     const clearFilter = (filterName: keyof UserFilters) => {
         setFilters(prev => ({
             ...prev,
-            [filterName]: typeof prev[filterName] === 'boolean' ? null : (typeof prev[filterName] === 'string' ? '' : 0)
+            [filterName]: typeof prev[filterName] === 'boolean' || prev[filterName] === null
+                ? null
+                : (typeof prev[filterName] === 'string' ? '' : 0)
         }));
     };
 
@@ -539,6 +547,9 @@ const handleNamesChanged = () => {
             "bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200": action === "Deleted",
         }
     );
+
+    // number of visible table columns (+1 for the actions column), for the colSpan of the loading / empty rows
+    const visibleColumnCount = Object.values(columnVisibility).filter(Boolean).length + 1;
 
     return (
         <div className="space-y-6">
@@ -564,12 +575,11 @@ const handleNamesChanged = () => {
                             <UserPlus className="mr-2 h-4 w-4"/>
                             New User
                         </Button>
-
                     </Link>
                     <Button variant="outline" onClick={() => setIsDeptAccountModalOpen(true)}>
-    <Briefcase className="mr-2 h-4 w-4"/>
-    Create Section/Unit Account
-</Button>
+                        <Briefcase className="mr-2 h-4 w-4"/>
+                        Create Section/Unit Account
+                    </Button>
                 </div>
             </div>
 
@@ -639,7 +649,7 @@ const handleNamesChanged = () => {
                 </Card>
             </div>
 
-            {/* NEW — tab switcher: Main / Department / Sub-Unit users */}
+            {/* tab switcher: Users / Section Accounts / Unit Accounts */}
             <div className="flex gap-1 border rounded-lg p-1 bg-muted/30 w-fit">
                 {userTabs.map((tab) => (
                     <button
@@ -674,12 +684,12 @@ const handleNamesChanged = () => {
                             size="icon"
                             className={showFilters ? "bg-gray-100 dark:bg-gray-900" : ""}
                             onClick={() => {
-                                setShowFilters(!showFilters);
-                                console.log("Filters toggled:", showFilters);
+                                // closing the filter panel also clears every filter
                                 if (showFilters) {
                                     setFilters(defaultFilters);
                                     setCurrentPage(1);
                                 }
+                                setShowFilters(!showFilters);
                             }}
                         >
                             <Filter className="h-4 w-4"/>
@@ -693,23 +703,23 @@ const handleNamesChanged = () => {
                             <DropdownMenuContent align="end">
                                 {Object.entries({
                                     id: "ID",
-                                    first_name: "First Name",
-                                    last_name: "Last Name",
+                                    first_name: "Name",
                                     email: "Email",
                                     role: "Role",
                                     department: "Section",
-                                    department_unit: "Sub-Unit",   // NEW
+                                    department_unit: "Sub-Unit",
                                     designation: "Designation",
                                     status: "Status"
-
                                 }).map(([key, label]) => (
                                     <DropdownMenuCheckboxItem
                                         key={key}
                                         checked={columnVisibility[key]}
+                                        // keep the menu open so several columns can be toggled in a row
+                                        onSelect={(e) => e.preventDefault()}
                                         onCheckedChange={(checked) =>
                                             setColumnVisibility((prev) => ({
                                                 ...prev,
-                                                [key]: checked,
+                                                [key]: !!checked,
                                             }))
                                         }
                                     >
@@ -724,235 +734,218 @@ const handleNamesChanged = () => {
                     <div className="relative w-full">
                         {showFilters && (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-4">
-                                {columnVisibility.id && (
-                                    <div className="relative">
-                                        <Input
-                                            placeholder="Search by ID..."
-                                            value={filters.id === 0 ? "" : filters.id}
-                                            onChange={(e) => setFilters(prev => ({
-                                                ...prev,
-                                                id: parseInt(e.target.value) || 0
-                                            }))}
-                                            className="w-full"
-                                            type="number"
-                                        />
-                                        {filters.id !== 0 && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                onClick={() => clearFilter('id')}
-                                            >
-                                                <X className="h-4 w-4"/>
-                                            </Button>
-                                        )}
-                                    </div>
-                                )}
-
-                                {columnVisibility.first_name && (
-                                    <div className="relative">
-                                        <Input
-                                            placeholder="Search by First Name..."
-                                            value={filters.first_name}
-                                            onChange={(e) => setFilters(prev => ({
-                                                ...prev,
-                                                first_name: e.target.value
-                                            }))}
-                                            className="w-full"
-                                        />
-                                        {filters.first_name && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                onClick={() => clearFilter('first_name')}
-                                            >
-                                                <X className="h-4 w-4"/>
-                                            </Button>
-                                        )}
-                                    </div>
-                                )}
-
-                                {columnVisibility.last_name && (
-                                    <div className="relative">
-                                        <Input
-                                            placeholder="Search by Last Name..."
-                                            value={filters.last_name}
-                                            onChange={(e) => setFilters(prev => ({
-                                                ...prev,
-                                                last_name: e.target.value
-                                            }))}
-                                            className="w-full"
-                                        />
-                                        {filters.last_name && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                onClick={() => clearFilter('last_name')}
-                                            >
-                                                <X className="h-4 w-4"/>
-                                            </Button>
-                                        )}
-                                    </div>
-                                )}
-
-                                {columnVisibility.email && (
-                                    <div className="relative">
-                                        <Input
-                                            placeholder="Search by Email..."
-                                            value={filters.email}
-                                            onChange={(e) => setFilters(prev => ({
-                                                ...prev,
-                                                email: e.target.value
-                                            }))}
-                                            className="w-full"
-                                        />
-                                        {filters.email && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                onClick={() => clearFilter('email')}
-                                            >
-                                                <X className="h-4 w-4"/>
-                                            </Button>
-                                        )}
-                                    </div>
-                                )}
-
-                                {columnVisibility.role && (
-                                    <div className="relative">
-                                        <Select
-                                            value={filters.role_id !== 0 ? filters.role_id.toString() : ""}
-                                            onValueChange={(value) => setFilters((prev) => ({
-                                                ...prev,
-                                                role_id: parseInt(value) || 0,
-                                            }))}
+                                <div className="relative">
+                                    <Input
+                                        placeholder="Search by ID..."
+                                        value={filters.id === 0 ? "" : filters.id}
+                                        onChange={(e) => setFilters(prev => ({
+                                            ...prev,
+                                            id: parseInt(e.target.value) || 0
+                                        }))}
+                                        className="w-full"
+                                        type="number"
+                                    />
+                                    {filters.id !== 0 && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
+                                            onClick={() => clearFilter('id')}
                                         >
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select a Role"/>
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {roles.map((role) => (
-                                                    <SelectItem key={role.id} value={role.id.toString()}>
-                                                        {role.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        {filters.role_id !== 0 && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                onClick={() => clearFilter('role_id')}
-                                            >
-                                                <X className="h-4 w-4"/>
-                                            </Button>
-                                        )}
-                                    </div>
-                                )}
+                                            <X className="h-4 w-4"/>
+                                        </Button>
+                                    )}
+                                </div>
 
-                                {/* Section/department filter is only relevant for the Department and Sub-Unit tabs */}
-                                {columnVisibility.department && (
-                                    <div className="relative">
-                                        <Select
-                                            value={filters.department_id !== 0 ? filters.department_id.toString() : ""}
-                                            onValueChange={(value) => setFilters((prev) => ({
-                                                ...prev,
-                                                department_id: parseInt(value) || 0,
-                                            }))}
+                                <div className="relative">
+                                    <Input
+                                        placeholder="Search by Name..."
+                                        value={filters.first_name}
+                                        onChange={(e) => setFilters(prev => ({
+                                            ...prev,
+                                            first_name: e.target.value
+                                        }))}
+                                        className="w-full"
+                                    />
+                                    {filters.first_name && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+                                            onClick={() => clearFilter('first_name')}
                                         >
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select a Section"/>
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {departments.map((dept) => (
-                                                    <SelectItem key={dept.id} value={dept.id.toString()}>
-                                                        {dept.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        {filters.department_id !== 0 && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                onClick={() => clearFilter('department_id')}
-                                            >
-                                                <X className="h-4 w-4"/>
-                                            </Button>
-                                        )}
-                                    </div>
-                                )}
+                                            <X className="h-4 w-4"/>
+                                        </Button>
+                                    )}
+                                </div>
 
-                                {columnVisibility.designation && (
-                                    <div className="relative">
-                                        <Select
-                                            value={filters.designation_id !== 0 ? filters.designation_id.toString() : ""}
-                                            onValueChange={(value) => setFilters((prev) => ({
-                                                ...prev,
-                                                designation_id: parseInt(value) || 0,
-                                            }))}
+                                <div className="relative">
+                                    <Input
+                                        placeholder="Search by Last Name..."
+                                        value={filters.last_name}
+                                        onChange={(e) => setFilters(prev => ({
+                                            ...prev,
+                                            last_name: e.target.value
+                                        }))}
+                                        className="w-full"
+                                    />
+                                    {filters.last_name && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+                                            onClick={() => clearFilter('last_name')}
                                         >
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select a Designation"/>
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {designations.map((designation) => (
-                                                    <SelectItem key={designation.id} value={designation.id.toString()}>
-                                                        {designation.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        {filters.designation_id !== 0 && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                onClick={() => clearFilter('designation_id')}
-                                            >
-                                                <X className="h-4 w-4"/>
-                                            </Button>
-                                        )}
-                                    </div>
-                                )}
+                                            <X className="h-4 w-4"/>
+                                        </Button>
+                                    )}
+                                </div>
 
-                                {columnVisibility.status && (
-                                    <div className="relative">
-                                        <Select
-                                            value={filters.is_active !== null ? filters.is_active.toString() : ""}
-                                            onValueChange={(value) => setFilters((prev) => ({
-                                                ...prev,
-                                                is_active: value === "true" ? true : value === "false" ? false : null,
-                                            }))}
+                                <div className="relative">
+                                    <Input
+                                        placeholder="Search by Email..."
+                                        value={filters.email}
+                                        onChange={(e) => setFilters(prev => ({
+                                            ...prev,
+                                            email: e.target.value
+                                        }))}
+                                        className="w-full"
+                                    />
+                                    {filters.email && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+                                            onClick={() => clearFilter('email')}
                                         >
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select Status"/>
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {statuses.map((status) => (
-                                                    <SelectItem key={status.id} value={status.value.toString()}>
-                                                        {status.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        {filters.is_active !== null && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
-                                                onClick={() => clearFilter('is_active')}
-                                            >
-                                                <X className="h-4 w-4"/>
-                                            </Button>
-                                        )}
-                                    </div>
-                                )}
+                                            <X className="h-4 w-4"/>
+                                        </Button>
+                                    )}
+                                </div>
+
+                                <div className="relative">
+                                    <Select
+                                        value={filters.role_id !== 0 ? filters.role_id.toString() : ""}
+                                        onValueChange={(value) => setFilters((prev) => ({
+                                            ...prev,
+                                            role_id: parseInt(value) || 0,
+                                        }))}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Select a Role"/>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {roles.map((role) => (
+                                                <SelectItem key={role.id} value={role.id.toString()}>
+                                                    {role.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {filters.role_id !== 0 && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
+                                            onClick={() => clearFilter('role_id')}
+                                        >
+                                            <X className="h-4 w-4"/>
+                                        </Button>
+                                    )}
+                                </div>
+
+                                <div className="relative">
+                                    <Select
+                                        value={filters.department_id !== 0 ? filters.department_id.toString() : ""}
+                                        onValueChange={(value) => setFilters((prev) => ({
+                                            ...prev,
+                                            department_id: parseInt(value) || 0,
+                                        }))}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Select a Section"/>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {departments.map((dept) => (
+                                                <SelectItem key={dept.id} value={dept.id.toString()}>
+                                                    {dept.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {filters.department_id !== 0 && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
+                                            onClick={() => clearFilter('department_id')}
+                                        >
+                                            <X className="h-4 w-4"/>
+                                        </Button>
+                                    )}
+                                </div>
+
+                                <div className="relative">
+                                    <Select
+                                        value={filters.designation_id !== 0 ? filters.designation_id.toString() : ""}
+                                        onValueChange={(value) => setFilters((prev) => ({
+                                            ...prev,
+                                            designation_id: parseInt(value) || 0,
+                                        }))}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Select a Designation"/>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {designations.map((designation) => (
+                                                <SelectItem key={designation.id} value={designation.id.toString()}>
+                                                    {designation.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {filters.designation_id !== 0 && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
+                                            onClick={() => clearFilter('designation_id')}
+                                        >
+                                            <X className="h-4 w-4"/>
+                                        </Button>
+                                    )}
+                                </div>
+
+                                <div className="relative">
+                                    <Select
+                                        value={filters.is_active !== null ? filters.is_active.toString() : ""}
+                                        onValueChange={(value) => setFilters((prev) => ({
+                                            ...prev,
+                                            is_active: value === "true" ? true : value === "false" ? false : null,
+                                        }))}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Select Status"/>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {statuses.map((status) => (
+                                                <SelectItem key={status.id} value={status.value.toString()}>
+                                                    {status.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {filters.is_active !== null && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6"
+                                            onClick={() => clearFilter('is_active')}
+                                        >
+                                            <X className="h-4 w-4"/>
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -962,7 +955,6 @@ const handleNamesChanged = () => {
                                 <TableRow>
                                     {columnVisibility.id && <TableHead>ID</TableHead>}
                                     {columnVisibility.first_name && <TableHead> Name</TableHead>}
-                                    {/* {columnVisibility.last_name && <TableHead>Last Name</TableHead>} */}
                                     {columnVisibility.email && <TableHead>Email</TableHead>}
                                     {columnVisibility.role && <TableHead>Role</TableHead>}
                                     {columnVisibility.department && <TableHead>Section</TableHead>}
@@ -975,7 +967,7 @@ const handleNamesChanged = () => {
                             <TableBody>
                                 {isLoading ? (
                                     <TableRow>
-                                        <TableCell colSpan={9} className="h-90 text-center p-0">
+                                        <TableCell colSpan={visibleColumnCount} className="h-90 text-center p-0">
                                             <div className="w-full flex flex-col items-center justify-center py-8">
                                                 <div className="flex items-center justify-center space-x-2">
                                                     <div
@@ -992,7 +984,7 @@ const handleNamesChanged = () => {
                                     </TableRow>
                                 ) : users.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={9} className="h-90 text-center">
+                                        <TableCell colSpan={visibleColumnCount} className="h-90 text-center">
                                             <div className="flex flex-col items-center justify-center py-6">
                                                 <UsersIcon className="h-10 w-10 text-muted-foreground/40 mb-2"/>
                                                 <p className="text-sm text-muted-foreground">No users found</p>
@@ -1013,18 +1005,13 @@ const handleNamesChanged = () => {
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    users.map((user, index) => (
-                                    <TableRow key={user.id}>
-                                        {columnVisibility.id &&
-                                            <TableCell className="max-w-[50px]">
-                                                {(currentPage - 1) * pageSize + index + 1}
-                                            </TableCell>}
-                                            {/* {columnVisibility.first_name && <TableCell
-                                                className="truncate max-w-[150px]">{user.first_name}</TableCell>} */}
-                                            {/* {columnVisibility.last_name && <TableCell
-                                                className="truncate max-w-[150px]">{user.last_name}</TableCell>} */}
-                                                {columnVisibility.first_name && <TableCell
-    className="truncate max-w-[150px]">{`${user.first_name} ${user.last_name || ''}`.trim()}</TableCell>}
+                                    users.map((user) => (
+                                        <TableRow key={user.id}>
+                                            {/* CHANGED — shows the user's REAL id, so the "Search by ID" box matches what the table shows */}
+                                            {columnVisibility.id &&
+                                                <TableCell className="max-w-[50px]">{user.id}</TableCell>}
+                                            {columnVisibility.first_name && <TableCell
+                                                className="truncate max-w-[150px]">{`${user.first_name} ${user.last_name || ''}`.trim()}</TableCell>}
                                             {columnVisibility.email &&
                                                 <TableCell className="truncate max-w-[150px]">{user.email}</TableCell>}
                                             {columnVisibility.role && <TableCell
@@ -1037,15 +1024,15 @@ const handleNamesChanged = () => {
                                                 className="truncate max-w-[150px]">{user.designation || "—"}</TableCell>}
                                             {columnVisibility.status &&
                                                 <TableCell className="max-w-[100px] text-center">
-                                                <span className={cn(
-                                                    "inline-flex items-center rounded-full px-2.5 text-xs font-medium",
-                                                    {
-                                                        "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200": user.status === "Active",
-                                                        "bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200": user.status === "Inactive"
-                                                    }
-                                                )}>
-                                                    {user.status}
-                                                </span>
+                                                    <span className={cn(
+                                                        "inline-flex items-center rounded-full px-2.5 text-xs font-medium",
+                                                        {
+                                                            "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200": user.status === "Active",
+                                                            "bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200": user.status === "Inactive"
+                                                        }
+                                                    )}>
+                                                        {user.status}
+                                                    </span>
                                                 </TableCell>}
                                             <TableCell className="text-right align-middle max-w-[50px]">
                                                 <div className="flex items-center justify-end h-full">
@@ -1105,7 +1092,7 @@ const handleNamesChanged = () => {
                                 </SelectContent>
                             </Select>
                             <span className="text-sm text-muted-foreground">
-                                Page {currentPage} of {totalPages || 1}
+                                Page {currentPage} of {totalPages}
                             </span>
                         </div>
                         <div className="flex items-center space-x-2">
@@ -1113,7 +1100,7 @@ const handleNamesChanged = () => {
                                 variant="outline"
                                 size="icon"
                                 onClick={() => setCurrentPage(1)}
-                                disabled={currentPage === 1 || totalPages === 0}
+                                disabled={currentPage === 1}
                             >
                                 <ChevronsLeft className="h-4 w-4"/>
                             </Button>
@@ -1121,7 +1108,7 @@ const handleNamesChanged = () => {
                                 variant="outline"
                                 size="icon"
                                 onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                                disabled={currentPage === 1 || totalPages === 0}
+                                disabled={currentPage === 1}
                             >
                                 <ChevronLeft className="h-4 w-4"/>
                             </Button>
@@ -1138,16 +1125,16 @@ const handleNamesChanged = () => {
                             <Button
                                 variant="outline"
                                 size="icon"
-                                onClick={() => setCurrentPage(Math.min(totalPages || 1, currentPage + 1))}
-                                disabled={currentPage === (totalPages || 1) || totalPages === 0}
+                                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                                disabled={currentPage === totalPages}
                             >
                                 <ChevronRight className="h-4 w-4"/>
                             </Button>
                             <Button
                                 variant="outline"
                                 size="icon"
-                                onClick={() => setCurrentPage(totalPages || 1)}
-                                disabled={currentPage === (totalPages || 1) || totalPages === 0}
+                                onClick={() => setCurrentPage(totalPages)}
+                                disabled={currentPage === totalPages}
                             >
                                 <ChevronsRight className="h-4 w-4"/>
                             </Button>
@@ -1175,11 +1162,11 @@ const handleNamesChanged = () => {
                 onChanged={handleDesignationsChanged}
             />
             <AddDepartmentAccountModal
-    isOpen={isDeptAccountModalOpen}
-    onClose={() => setIsDeptAccountModalOpen(false)}
-    departments={departments}
-    onSuccess={() => setRefreshTrigger(prev => !prev)}
-/>
+                isOpen={isDeptAccountModalOpen}
+                onClose={() => setIsDeptAccountModalOpen(false)}
+                departments={departments}
+                onSuccess={() => setRefreshTrigger(prev => !prev)}
+            />
 
             <EmployeeNameManagerDialog
                 isOpen={isNameModalOpen}

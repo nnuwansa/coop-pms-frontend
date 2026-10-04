@@ -30,8 +30,7 @@ import {useAuthStore} from "@/store/auth-store";
 import {Checkbox} from "@/components/ui/checkbox";
 import {formatFileSize} from "@/app/(dashboard)/letters/[id]/attachment-preview";
 
-// NEW — Subject/Content limit raised from 1000 -> 3000 characters so long
-// letter content isn't cut short before hitting the "exceeded" warning.
+// Subject/Content limit (characters)
 const SUBJECT_MAX_LENGTH = 3000;
 
 const fileSchema = z.custom<File>()
@@ -43,16 +42,15 @@ const remarkFormSchema = z.object({
     receivedDate: z.date({required_error: "Received date is required"}),
     code: z.string().min(1, "Code is required").max(15, "Code cannot exceed 15 characters"),
     source: z.number().min(1, "Source is required"),
-    sourceName: z.string().optional(), // NEW — tracks selected source name to drive Registered Post field visibility
+    sourceName: z.string().optional(),
     sourceCode: z.string().optional(),
     sender: z.string().max(150, "Sender's Address cannot exceed 150 characters").optional(),
     organization: z.number().optional(),
-    subject: z.string().min(1, "Subject is required").max(SUBJECT_MAX_LENGTH, `Subject/Content cannot exceed ${SUBJECT_MAX_LENGTH} characters`),   // CHANGED — raised limit
+    subject: z.string().min(1, "Subject is required").max(SUBJECT_MAX_LENGTH, `Subject/Content cannot exceed ${SUBJECT_MAX_LENGTH} characters`),
     email: z.string().email("Invalid email format").max(150).optional().or(z.literal("")),
     telephone: z.string().min(10, "Telephone number must be at least 10 digits").max(15).optional().or(z.literal("")),
     other: z.string().max(500).optional(),
     sender_subject_no: z.string().max(50, "Sender's Subject No cannot exceed 50 characters").optional(),
-    // NEW: Registered Postal Number field
     is_public_complaint: z.boolean().default(false),
     registered_post_no: z.string().max(50, "Registered Postal Number cannot exceed 50 characters").optional(),
     assignee_ids: z.array(z.number()).optional().default([]),
@@ -73,6 +71,29 @@ const remarkFormSchema = z.object({
 
 type RemarkFormValues = z.infer<typeof remarkFormSchema>;
 
+// One place for a completely blank form — used for defaultValues AND for every
+// reset(), so nothing from the previous letter (sender, email, address, source,
+// assignees ...) can survive into the next one.
+const getEmptyValues = (): RemarkFormValues => ({
+    receivedDate: new Date(),
+    code: "",
+    source: undefined as unknown as number,
+    sourceName: "",
+    sourceCode: "",
+    sender: "",
+    organization: undefined,
+    subject: "",
+    email: "",
+    telephone: "",
+    other: "",
+    sender_subject_no: "",
+    registered_post_no: "",
+    is_public_complaint: false,
+    assignee_ids: [],
+    department_ids: [],
+    attachments: [],
+});
+
 interface Organization {
     id: number;
     name: string;
@@ -90,44 +111,41 @@ interface InsertLetterModalProps {
 export function InsertLetterModal({organizations, onSuccess, onOrganizationAdded}: InsertLetterModalProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
-    // const [sources, setSources] = useState<{id: number; name: string}[]>([]);
     const [departments, setDepartments] = useState<{id: number; name: string}[]>([]);
-    const [assignees, setAssignees] = useState<{id: number; name: string; department_id?: number | null; department_unit_id?: number | null}[]>([]);   // CHANGED — carries dept/sub-unit now
+    const [assignees, setAssignees] = useState<{id: number; name: string; department_id?: number | null; department_unit_id?: number | null}[]>([]);
     const [newOrgName, setNewOrgName] = useState("");
     const [newOrgAddress, setNewOrgAddress] = useState("");
     const [newOrgEmail, setNewOrgEmail] = useState("");
     const [newOrgTelephone, setNewOrgTelephone] = useState("");
-    const [newOrgFax, setNewOrgFax] = useState(""); 
-    const [isSubmittingOrg, setIsSubmittingOrg] = useState(false); 
+    const [newOrgFax, setNewOrgFax] = useState("");
+    const [isSubmittingOrg, setIsSubmittingOrg] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [orgSearch, setOrgSearch] = useState("");
     const [sourceSearch, setSourceSearch] = useState("");
     const [isAddingOrg, setIsAddingOrg] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const orgListRef = useRef<HTMLDivElement>(null);   
-    const sourceListRef = useRef<HTMLDivElement>(null); 
+    const orgListRef = useRef<HTMLDivElement>(null);
+    const sourceListRef = useRef<HTMLDivElement>(null);
     const {hasPermission} = useAuthStore();
     const [sources, setSources] = useState<{id: number; name: string; code?: string}[]>([]);
     const [initialsByCandidates, setInitialsByCandidates] = useState<{id: number; name: string; is_default: boolean}[]>([]);
-   const [selectedInitialsByUserId, setSelectedInitialsByUserId] = useState<number>(0);
+    const [selectedInitialsByUserId, setSelectedInitialsByUserId] = useState<number>(0);
     const [isEditingDepts, setIsEditingDepts] = useState(false);
     const [isEditingAssignees, setIsEditingAssignees] = useState(false);
     const [sourcePopoverOpen, setSourcePopoverOpen] = useState(false);
     const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
     const [departmentAccounts, setDepartmentAccounts] = useState<{
-    id: number;
-    department_id: number;
-    department_name: string;
-    department_unit_id?: number | null;      // NEW
-    department_unit_name?: string | null;    // NEW
-    email: string;
-}[]>([]);
+        id: number;
+        department_id: number;
+        department_name: string;
+        department_unit_id?: number | null;
+        department_unit_name?: string | null;
+        email: string;
+    }[]>([]);
     const [datePopoverOpen, setDatePopoverOpen] = useState(false);
-const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
+    const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
 
-    // NEW — narrows the (potentially long) Assignees list: pick a Department,
-    // then a Sub-Unit if that department has any, and/or free-text search.
-    // All three combine (AND) to filter which assignees are shown as options.
+    // Assignee filters: pick a Section, then a Sub-Unit (if it has any), and/or search by name
     const [assigneeDeptFilter, setAssigneeDeptFilter] = useState<number>(0);
     const [assigneeUnitFilter, setAssigneeUnitFilter] = useState<number>(0);
     const [assigneeUnits, setAssigneeUnits] = useState<{id: number; name: string}[]>([]);
@@ -141,17 +159,7 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
             .catch(() => setAssigneeUnits([]));
     }, [assigneeDeptFilter]);
 
-    const filteredAssignees = assignees.filter(a =>
-        (!assigneeDeptFilter || a.department_id === assigneeDeptFilter) &&
-        (!assigneeUnitFilter || a.department_unit_id === assigneeUnitFilter) &&
-        (!assigneeSearch.trim() || a.name.toLowerCase().includes(assigneeSearch.trim().toLowerCase()))
-    );
-
     // --- Draggable dialog -----------------------------------------------
-    // The dialog is centered by default (translate(-50%, -50%)). We add an
-    // extra pixel offset on top of that so the user can drag it out of the
-    // way (e.g. to peek at the letters list behind it) without losing the
-    // centered starting position.
     const [dragOffset, setDragOffset] = useState({x: 0, y: 0});
     const dragStateRef = useRef<{ startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
 
@@ -168,7 +176,6 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
     }, [handleDragMove]);
 
     const handleDragStart = (e: React.MouseEvent) => {
-        // Ignore drags started on interactive elements inside the header (none currently, but safe-guard)
         dragStateRef.current = {
             startX: e.clientX,
             startY: e.clientY,
@@ -180,7 +187,6 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
     };
 
     useEffect(() => {
-        // Clean up listeners if the component unmounts mid-drag
         return () => {
             window.removeEventListener('mousemove', handleDragMove);
             window.removeEventListener('mouseup', handleDragEnd);
@@ -190,35 +196,40 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
 
     const form = useForm<RemarkFormValues>({
         resolver: zodResolver(remarkFormSchema),
-        defaultValues: {
-            receivedDate: new Date(),
-            code: "",
-            source: undefined,
-            sourceName: "",
-            sender: "",
-            organization: undefined,
-            subject: "",
-            email: "",
-            telephone: "",
-            other: "",
-            sender_subject_no: "",
-            registered_post_no: "",
-            is_public_complaint: false,  
-            assignee_ids: [],
-            department_ids: [],
-            attachments: [],
-        },
+        defaultValues: getEmptyValues(),
     });
 
     const {control, handleSubmit, setValue, watch, reset} = form;
     const attachments = watch("attachments");
     const selectedDepartmentIds = watch("department_ids") || [];
     const selectedAssigneeIds = watch("assignee_ids") || [];
-    const subjectValue = watch("subject") || "";     // NEW — drives the character counter
-    const otherValue = watch("other") || "";         // NEW — Cheque No / Money Order No, previewed under Subject
+    const subjectValue = watch("subject") || "";
+    const otherValue = watch("other") || "";
 
-    // NEW: derive whether the "Registered Postal Number" field should show
     const isRegisteredPost = watch("sourceCode") === "REGISTERED_POST";
+
+    // CHANGED — Assignees are NOT all dumped into the list any more.
+    // They only appear once a Section is ticked in "Sections", or a section /
+    // sub-unit is picked in the filter below, or a name is typed in the search.
+    const selectedSectionPairs = selectedDepartmentIds
+        .map(id => departmentAccounts.find(d => d.id === id))
+        .filter((d): d is NonNullable<typeof d> => !!d)
+        .map(d => ({dept: d.department_id, unit: d.department_unit_id ?? null}));
+
+    const hasAssigneeScope =
+        selectedSectionPairs.length > 0 || !!assigneeDeptFilter || !!assigneeSearch.trim();
+
+    const filteredAssignees = !hasAssigneeScope ? [] : assignees.filter(a =>
+        (assigneeDeptFilter
+            ? true   // the filter dropdown overrides the ticked sections
+            : selectedSectionPairs.length === 0 ||
+              selectedSectionPairs.some(p =>
+                  a.department_id === p.dept &&
+                  (p.unit === null || (a.department_unit_id ?? null) === p.unit))) &&
+        (!assigneeDeptFilter || a.department_id === assigneeDeptFilter) &&
+        (!assigneeUnitFilter || a.department_unit_id === assigneeUnitFilter) &&
+        (!assigneeSearch.trim() || a.name.toLowerCase().includes(assigneeSearch.trim().toLowerCase()))
+    );
 
     const fetchLetterCode = useCallback(async (receivedDate: Date) => {
         try {
@@ -234,24 +245,22 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
         if (isOpen && !isLoading) {
             const fetchData = async () => {
                 try {
-                     const [sourcesRes, deptRes, assigneeRes, deptAccountsRes, initialsByRes] = await Promise.all([
+                    const [sourcesRes, deptRes, assigneeRes, deptAccountsRes, initialsByRes] = await Promise.all([
                         api.get('/v1/source/list'),
                         api.get('/v1/department/list'),
                         api.get('/v1/system_user/names'),
-                        api.get('/v1/system_user/department-accounts'), 
+                        api.get('/v1/system_user/department-accounts'),
                         api.get('/v1/system_user/by-permission/letter.initials_by'),
                     ]);
                     setSources(sourcesRes.data.data || []);
                     setDepartments(deptRes.data.data || []);
                     setAssignees(assigneeRes.data.data || []);
-                    setDepartmentAccounts(deptAccountsRes.data.data || []); 
+                    setDepartmentAccounts(deptAccountsRes.data.data || []);
                     const candidates = initialsByRes.data.success ? initialsByRes.data.data : [];
-                   setInitialsByCandidates(candidates);
-                   // NEW — pre-select the default candidate as a convenience,
-                   // but this is JUST a pre-fill; nothing is sent unless the
-                   // admin explicitly leaves it selected and submits
-                   const defaultCandidate = candidates.find(c => c.is_default);
-                   setSelectedInitialsByUserId(defaultCandidate?.id || 0);
+                    setInitialsByCandidates(candidates);
+                    // pre-select the default candidate as a convenience only
+                    const defaultCandidate = candidates.find(c => c.is_default);
+                    setSelectedInitialsByUserId(defaultCandidate?.id || 0);
                     await fetchLetterCode(new Date());
                     setIsLoading(true);
                 } catch (error) {
@@ -262,57 +271,49 @@ const [selectedSenderLabel, setSelectedSenderLabel] = useState<string>("");
         }
     }, [isOpen, isLoading, fetchLetterCode]);
 
-    
-   const handleOpenChange = (open: boolean) => {
-    setIsOpen(open);
-    // NEW — dialog එක open වෙනකොට Received Date field එක actual current
-    // moment එකට set කරනවා. Without this, receivedDate defaults to
-    // whatever `new Date()` was captured at when the component first
-    // MOUNTED (i.e. when the dashboard page loaded) — not when the dialog
-    // is actually opened. If the tab was left open for hours/days, a
-    // letter inserted without manually touching the date field would get
-    // saved with a stale received_datetime, causing it to sort out of
-    // place instead of appearing as the newest letter.
-    if (open) {
-        setValue('receivedDate', new Date());
-    }
-    if (!open) {
-        reset();
-        setIsLoading(false);
-        setOrgSearch("");
-        setSourceSearch("");
-        setIsAddingOrg(false);
-        setNewOrgName("");
-        setNewOrgAddress("");
-        setNewOrgEmail("");
-        setNewOrgTelephone("");
-        setNewOrgFax("");  
-        setIsEditingDepts(false);     
-        setIsEditingAssignees(false);  
-        setDatePopoverOpen(false);
-        setSelectedSenderLabel(""); 
-        setDragOffset({x: 0, y: 0}); 
-        setAssigneeDeptFilter(0);
-        setAssigneeUnitFilter(0);
-        setAssigneeSearch("");
-        setSelectedInitialsByUserId(0);
-    }
-};
+    const handleOpenChange = (open: boolean) => {
+        setIsOpen(open);
+        // the Received Date must be the real "now" of when the dialog opens,
+        // not the time the dashboard page was first mounted
+        if (open) {
+            setValue('receivedDate', new Date());
+        }
+        if (!open) {
+            reset(getEmptyValues());
+            setIsLoading(false);
+            setOrgSearch("");
+            setSourceSearch("");
+            setIsAddingOrg(false);
+            setNewOrgName("");
+            setNewOrgAddress("");
+            setNewOrgEmail("");
+            setNewOrgTelephone("");
+            setNewOrgFax("");
+            setIsEditingDepts(false);
+            setIsEditingAssignees(false);
+            setDatePopoverOpen(false);
+            setSelectedSenderLabel("");
+            setDragOffset({x: 0, y: 0});
+            setAssigneeDeptFilter(0);
+            setAssigneeUnitFilter(0);
+            setAssigneeSearch("");
+            setSelectedInitialsByUserId(0);
+        }
+    };
 
-    // replace handleAddOrganization with:
-const handleAddOrganization = async () => {
-    if (!newOrgName.trim() || isSubmittingOrg) return;
+    // The ONLY place the sender fields are written. EVERY field is always
+    // overwritten (empty string when the sender has no value), so nothing from
+    // the previously selected sender can stay behind.
+    const applySender = (v: {organization?: number; sender: string; email: string; telephone: string; label: string}) => {
+        const opts = {shouldDirty: true, shouldValidate: true};
+        setValue('organization', v.organization, opts);
+        setValue('sender', v.sender, opts);
+        setValue('email', v.email, opts);
+        setValue('telephone', v.telephone, opts);
+        setSelectedSenderLabel(v.label);
+    };
 
-    // block duplicate organization names (case-insensitive)
-    const existing = organizations.find(
-        o => o.name.trim().toLowerCase() === newOrgName.trim().toLowerCase()
-    );
-    if (existing) {
-        toast.error(`"${existing.name}" already exists — selecting it instead`);
-        setValue('organization', existing.id);
-        if (existing.address) setValue('sender', existing.address);
-        if (existing.email) setValue('email', existing.email);
-        if (existing.telephone) setValue('telephone', existing.telephone);
+    const resetNewOrgForm = () => {
         setNewOrgName("");
         setNewOrgAddress("");
         setNewOrgEmail("");
@@ -321,87 +322,89 @@ const handleAddOrganization = async () => {
         setIsAddingOrg(false);
         setOrgPopoverOpen(false);
         setOrgSearch("");
-        return;
-    }
+    };
 
-    // NEW — guards against a second click firing a duplicate create request
-    // while the first one is still in flight
-    setIsSubmittingOrg(true);
-    try {
-        const res = await api.post('/v1/organization/', {
-            name: newOrgName.trim(),
-            address: newOrgAddress.trim() || null,
-            email: newOrgEmail.trim() || null,
-            telephone: newOrgTelephone.trim() || null,
-            fax_no: newOrgFax.trim() || null, // NEW
-        });
-        const newOrg = res.data.data;
-        onOrganizationAdded?.(newOrg);
-        setValue('organization', newOrg.id);
-        if (newOrg.address) setValue('sender', newOrg.address);
-        if (newOrg.email) setValue('email', newOrg.email);
-        if (newOrg.telephone) setValue('telephone', newOrg.telephone);
-        setNewOrgName("");
-        setNewOrgAddress("");
-        setNewOrgEmail("");
-        setNewOrgTelephone("");
-        setNewOrgFax("");
-        setIsAddingOrg(false);
-        setOrgPopoverOpen(false);
-        setOrgSearch("");
-        toast.success("Organization added successfully");
-    } catch (error) {
-        toast.error(error.response?.data?.message || 'Failed to add organization');
-    } finally {
-        setIsSubmittingOrg(false);
-    }
-};
+    const handleAddOrganization = async () => {
+        if (!newOrgName.trim() || isSubmittingOrg) return;
+
+        // block duplicate organization names (case-insensitive)
+        const existing = organizations.find(
+            o => o.name.trim().toLowerCase() === newOrgName.trim().toLowerCase()
+        );
+        if (existing) {
+            toast.error(`"${existing.name}" already exists — selecting it instead`);
+            applySender({
+                organization: existing.id,
+                sender: existing.address || '',
+                email: existing.email || '',
+                telephone: existing.telephone || '',
+                label: existing.name,
+            });
+            resetNewOrgForm();
+            return;
+        }
+
+        setIsSubmittingOrg(true);
+        try {
+            const res = await api.post('/v1/organization/', {
+                name: newOrgName.trim(),
+                address: newOrgAddress.trim() || null,
+                email: newOrgEmail.trim() || null,
+                telephone: newOrgTelephone.trim() || null,
+                fax_no: newOrgFax.trim() || null,
+            });
+            const newOrg = res.data.data;
+            onOrganizationAdded?.(newOrg);
+            // CHANGED — before, `if (newOrg.email) setValue(...)` meant a new
+            // organization WITHOUT an email/address kept the PREVIOUS sender's values
+            applySender({
+                organization: newOrg.id,
+                sender: newOrg.address || '',
+                email: newOrg.email || '',
+                telephone: newOrg.telephone || '',
+                label: newOrg.name,
+            });
+            resetNewOrgForm();
+            toast.success("Organization added successfully");
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to add organization');
+        } finally {
+            setIsSubmittingOrg(false);
+        }
+    };
 
     const toggleDepartment = (id: number) => {
-        const current = selectedDepartmentIds;
-        const updated = current.includes(id) ? current.filter(d => d !== id) : [...current, id];
+        const updated = selectedDepartmentIds.includes(id)
+            ? selectedDepartmentIds.filter(d => d !== id)
+            : [...selectedDepartmentIds, id];
         setValue('department_ids', updated);
     };
 
-    // const toggleAssignee = (id: number) => {
-    //     const current = selectedAssigneeIds;
-    //     const updated = current.includes(id) ? current.filter(a => a !== id) : [...current, id];
-    //     setValue('assignee_ids', updated);
-    // };
-
+    // CHANGED — an assignee's own section is ALWAYS added to "Sections"
+    // (not only when no section had been picked yet). The backend routes it too.
     const toggleAssignee = (id: number) => {
-    const current = selectedAssigneeIds;
-    const isAdding = !current.includes(id);
-    const updated = isAdding ? [...current, id] : current.filter(a => a !== id);
-    setValue('assignee_ids', updated);
- 
-    // NEW — if this is an ADD (not a removal) and no section has been
-    // picked yet, auto-select the section that matches this assignee's own
-    // department (and sub-unit, if they belong to one). Only fires when
-    // department_ids is still empty, so it never overrides a department
-    // the admin already deliberately chose.
-    if (isAdding && selectedDepartmentIds.length === 0) {
-        const assignee = assignees.find(a => a.id === id);
-        if (assignee && assignee.department_id) {
-            const matchingAccount = departmentAccounts.find(da =>
-                da.department_id === assignee.department_id &&
-                (da.department_unit_id ?? null) === (assignee.department_unit_id ?? null)
-            );
-            if (matchingAccount) {
-                setValue('department_ids', [matchingAccount.id]);
+        const isAdding = !selectedAssigneeIds.includes(id);
+        setValue('assignee_ids',
+            isAdding ? [...selectedAssigneeIds, id] : selectedAssigneeIds.filter(a => a !== id));
+
+        if (isAdding) {
+            const assignee = assignees.find(a => a.id === id);
+            if (assignee?.department_id) {
+                const match = departmentAccounts.find(da =>
+                    da.department_id === assignee.department_id &&
+                    (da.department_unit_id ?? null) === (assignee.department_unit_id ?? null));
+                if (match && !selectedDepartmentIds.includes(match.id)) {
+                    setValue('department_ids', [...selectedDepartmentIds, match.id]);
+                }
             }
         }
-    }
-};
+    };
 
     async function onSubmit(data: RemarkFormValues) {
         setIsSubmitting(true);
         try {
-            // CHANGED — the Cheque No / Money Order No is now actually saved as
-            // part of the Subject/Content, on its own line, instead of only
-            // being shown as a preview. `other` itself is still stored
-            // separately as before (for its own filter/column), this just
-            // also folds it into the subject text that gets persisted.
+            // the Cheque No / Money Order No is also saved inside Subject/Content,
+            // on its own line (`other` is still stored separately for its own filter)
             const finalSubject = data.other?.trim()
                 ? `${data.subject}\n(Cheque No / Money Order No: ${data.other.trim()})`
                 : data.subject;
@@ -409,10 +412,10 @@ const handleAddOrganization = async () => {
             const letterPayload = {
                 code: data.code,
                 received_datetime: data.receivedDate.toISOString(),
-                subject: finalSubject,   // CHANGED
+                subject: finalSubject,
                 other: data.other || null,
                 sender_subject_no: data.sender_subject_no || null,
-                registered_post_no: data.registered_post_no || null, // NEW
+                registered_post_no: data.registered_post_no || null,
                 sender: data.sender || null,
                 email: data.email || null,
                 telephone: data.telephone || null,
@@ -443,17 +446,19 @@ const handleAddOrganization = async () => {
 
             toast.success("Letter Inserted", {description: `Letter ${letter.data.code} has been successfully inserted.`});
 
-            // Keep the dialog open so multiple letters can be added back-to-back
-            // without re-clicking "New Letter" every time. Just reset the form
-            // back to blank and pull a fresh code for the next letter.
-            reset();
-            // NEW — reset() alone brings receivedDate back to the STALE `new Date()`
-            // captured when the form was first initialized (mount time), not the
-            // actual current moment. Without this line, the 2nd/3rd/... letter
-            // inserted back-to-back in the same session would also get backdated,
-            // same root cause as the dialog-open case above.
-            setValue('receivedDate', new Date());
-            fileInputRef.current && (fileInputRef.current.value = "");
+            // Keep the dialog open so several letters can be added back-to-back.
+            // Everything — form values AND local UI state — goes back to blank.
+            reset(getEmptyValues());
+            setSelectedSenderLabel("");
+            setIsEditingDepts(false);
+            setIsEditingAssignees(false);
+            setAssigneeDeptFilter(0);
+            setAssigneeUnitFilter(0);
+            setAssigneeSearch("");
+            setOrgSearch("");
+            setSourceSearch("");
+            setSelectedInitialsByUserId(initialsByCandidates.find(c => c.is_default)?.id || 0);
+            if (fileInputRef.current) fileInputRef.current.value = "";
             await fetchLetterCode(new Date());
             onSuccess?.();
 
@@ -476,11 +481,10 @@ const handleAddOrganization = async () => {
     };
 
     const removeAttachment = (index: number) => {
-        fileInputRef.current!.value = "";
+        if (fileInputRef.current) fileInputRef.current.value = "";
         setValue("attachments", attachments?.filter((_, i) => i !== index) || [], {shouldValidate: true});
     };
 
-    // NEW — how close to the limit before the counter turns into a warning colour
     const subjectRemaining = SUBJECT_MAX_LENGTH - subjectValue.length;
     const subjectNearLimit = subjectRemaining <= 100;
     const subjectExceeded = subjectRemaining < 0;
@@ -493,17 +497,17 @@ const handleAddOrganization = async () => {
                 </Button>
             </DialogTrigger>
             <DialogContent
-    className="sm:max-w-[830px] max-h-[90vh] overflow-y-auto"
-    style={{
-        marginLeft: dragOffset.x,
-        marginTop: dragOffset.y,
-    }}
->
+                className="sm:max-w-[830px] max-h-[90vh] overflow-y-auto"
+                style={{
+                    marginLeft: dragOffset.x,
+                    marginTop: dragOffset.y,
+                }}
+            >
                 {/* Drag handle -- grab the header to move the dialog out of the way */}
                 <div
                     onMouseDown={handleDragStart}
                     className="flex items-center justify-center -mt-2 -mx-6 mb-1 cursor-grab active:cursor-grabbing select-none"
-               title="Drag to move this window"
+                    title="Drag to move this window"
                 >
                     <GripHorizontal className="h-4 w-4 text-muted-foreground/50"/>
                 </div>
@@ -539,18 +543,13 @@ const handleAddOrganization = async () => {
                                                 </PopoverTrigger>
                                                 <PopoverContent className="w-auto p-0" align="start">
                                                     <Calendar mode="single" selected={field.value}
-                                                        // onSelect={(date) => {
-                                                        //     field.onChange(date);
-                                                        //     if (date) fetchLetterCode(date).catch(console.error);
-                                                        //     setDatePopoverOpen(false); {/* NEW — closes immediately on select */}
-                                                        // }}
                                                         onSelect={(date) => {
                                                             if (date) {
                                                                 const normalizedDate = new Date(Date.UTC(
                                                                     date.getFullYear(),
                                                                     date.getMonth(),
                                                                     date.getDate(),
-                                                                    12, 0, 0     // ← "noon UTC" fix
+                                                                    12, 0, 0     // "noon UTC" so the day never shifts with timezone
                                                                 ));
                                                                 field.onChange(normalizedDate);
                                                                 fetchLetterCode(normalizedDate).catch(console.error);
@@ -576,14 +575,12 @@ const handleAddOrganization = async () => {
                                         </FormItem>
                                     )}/>
 
-                                    {/* Source | Sender/Organization */}
-                                    <div className="flex flex-col lg:flex-row justify-between gap-5">
-                                        {/* Source */}
-                                        <div className="w-full lg:w-1/2">
-                                            <FormField control={control} name="source" render={({field}) => (
-                                                <FormItem className="w-full">
-                                                    <FormLabel>Source</FormLabel>
-                                                    <Popover open={sourcePopoverOpen} onOpenChange={setSourcePopoverOpen}>
+                                    {/* Source | Public Complaint (side by side) */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                        <FormField control={control} name="source" render={({field}) => (
+                                            <FormItem className="w-full">
+                                                <FormLabel>Source</FormLabel>
+                                                <Popover open={sourcePopoverOpen} onOpenChange={setSourcePopoverOpen}>
                                                     <PopoverTrigger asChild>
                                                         <FormControl>
                                                             <Button variant="outline" role="combobox" disabled={isSubmitting}
@@ -614,7 +611,7 @@ const handleAddOrganization = async () => {
                                                                             setValue('sourceName', '');
                                                                             setValue('sourceCode', '');
                                                                             setValue('registered_post_no', '');
-                                                                            setSourcePopoverOpen(false); {/* NEW */}
+                                                                            setSourcePopoverOpen(false);
                                                                         }} className="text-muted-foreground">
                                                                             Clear selection
                                                                         </CommandItem>
@@ -628,8 +625,8 @@ const handleAddOrganization = async () => {
                                                                                 if (src.code !== "REGISTERED_POST") {
                                                                                     setValue('registered_post_no', '');
                                                                                 }
-                                                                                setSourcePopoverOpen(false); {/* NEW */}
-                                                                                setSourceSearch(""); {/* NEW — clear search text for next open */}
+                                                                                setSourcePopoverOpen(false);
+                                                                                setSourceSearch("");
                                                                             }}>
                                                                             <Check className={cn("mr-2 h-4 w-4", field.value === src.id ? "opacity-100" : "opacity-0")}/>
                                                                             {src.name}
@@ -640,209 +637,165 @@ const handleAddOrganization = async () => {
                                                         </Command>
                                                     </PopoverContent>
                                                 </Popover>
-                                                    <FormMessage/>
-                                                </FormItem>
-                                            )}/>
-                                        </div>
+                                                <FormMessage/>
+                                            </FormItem>
+                                        )}/>
 
-                                        {/* Sender/Organization of the Letter */}
-                                                                     
-                                        <div className="w-full lg:w-1/2">
-                                            <FormField control={control} name="organization" render={({field}) => {
-                                                const search = orgSearch.toLowerCase();
-                                                const filteredOrgs = organizations.filter(o => !search || o.name.toLowerCase().includes(search));
-                                                const filteredUsers = assignees.filter(a => !search || a.name.toLowerCase().includes(search));
-                                                const selectedOrgName = field.value ? organizations.find(o => o.id === field.value)?.name : null;
-                                                // button label now falls back to the tracked label (covers the "person" case)
-                                                const displayLabel = selectedOrgName || selectedSenderLabel;
-
-                                                return (
-                                                    <FormItem className="w-full">
-                                                        <FormLabel>Sender/Organization of the Letter</FormLabel>
-                                                        <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
-                                                            <PopoverTrigger asChild>
-                                                                <FormControl>
-                                                                    <Button variant="outline" role="combobox" disabled={isSubmitting}
-                                                                            className={cn("w-full justify-between font-normal", !displayLabel && "text-muted-foreground")}>
-                                                                            <span className="truncate text-start">
-                                                                                {displayLabel || "Select organization or person"}
-                                                                            </span>
-                                                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
-                                                                        </Button>
-                                                                </FormControl>
-                                                            </PopoverTrigger>
-                                                            <PopoverContent
-                                                                className={cn("p-0", isAddingOrg ? "w-[420px]" : "w-[--radix-popover-trigger-width]")} align="start">
-                                                                <Command filter={() => 1}>
-                                                                    {!isAddingOrg && (
-                                                                        <>
-                                                                            <CommandInput placeholder="Search organization or person..." value={orgSearch} onValueChange={setOrgSearch}/>
-                                                                            {/*
-                                                                                NEW — max-h bumped up and `overscroll-contain` +
-                                                                                explicit `overflow-y-auto` added so the mouse
-                                                                                wheel scrolls this list directly instead of the
-                                                                                scroll being swallowed by the popover/page
-                                                                                behind it (previously only dragging the
-                                                                                scrollbar thumb worked).
-                                                                            */}
-                                                                            <CommandList ref={orgListRef} className="max-h-[320px] overflow-y-auto overscroll-contain"
-                                                                            onWheel={(e) => {if (orgListRef.current) {orgListRef.current.scrollTop += e.deltaY;}
-                                                                                            }}
-                                                                                            >
-                                                                                <CommandEmpty>No organization or person found.</CommandEmpty>
-
-                                                                                {field.value && (
-                                                                                    <CommandGroup>
-                                                                                        <CommandItem onSelect={() => {
-                                                                                            field.onChange(undefined);
-                                                                                            setValue('sender', '');
-                                                                                            setValue('email', '');
-                                                                                            setValue('telephone', '');
-                                                                                            setOrgPopoverOpen(false);
-                                                                                        }} className="text-muted-foreground">
-                                                                                            Clear selection
-                                                                                        </CommandItem>
-                                                                                    </CommandGroup>
-                                                                                )}
-
-                                                                                {filteredOrgs.length > 0 && (
-                                                                                    <CommandGroup heading="Organizations">
-                                                                                        {filteredOrgs.map(org => (
-                                                                                            <CommandItem key={`org-${org.id}`} value={`org-${org.id}`}
-                                                                                                onSelect={() => {
-                                                                                                    field.onChange(org.id);
-                                                                                                    const o = organizations.find(x => x.id === org.id);
-                                                                                                    // always set (fallback to "") so switching organizations clears
-                                                                                                    // out the previous org's values instead of leaving them behind
-                                                                                                    setValue('email', o?.email || '');
-                                                                                                    setValue('telephone', o?.telephone || '');
-                                                                                                    setValue('sender', o?.address || '');
-                                                                                                    setSelectedSenderLabel(org.name);
-                                                                                                    setOrgPopoverOpen(false);
-                                                                                                    setOrgSearch("");
-                                                                                                }}>
-                                                                                                <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
-                                                                                                {org.name}
-                                                                                            </CommandItem>
-                                                                                        ))}
-                                                                                    </CommandGroup>
-                                                                                )}
-
-                                                                                {filteredUsers.length > 0 && (
-                                                                                    <CommandGroup heading="System Users">
-                                                                                        {filteredUsers.map(user => (
-                                                                                            <CommandItem key={`user-${user.id}`} value={`user-${user.id}`}
-                                                                                                onSelect={() => {
-                                                                                                    field.onChange(undefined);
-                                                                                                    setValue('sender', user.name);
-                                                                                                    setValue('email', '');       
-                                                                                                    setValue('telephone', '');   
-                                                                                                    setSelectedSenderLabel(user.name);
-                                                                                                    setOrgPopoverOpen(false);
-                                                                                                    setOrgSearch("");
-                                                                                                }}>
-                                                                                                <Check className="mr-2 h-4 w-4 opacity-0"/>
-                                                                                                {user.name}
-                                                                                            </CommandItem>
-                                                                                        ))}
-                                                                                    </CommandGroup>
-                                                                                )}
-                                                                            </CommandList>
-                                                                        </>
-                                                                    )}
-
-                                                                    {/* the "Add new organization" footer */}
-                                                                    <div className={cn("p-2", !isAddingOrg && "border-t")}>
-                                                                        {isAddingOrg ? (
-                                                                            <div className="flex flex-col gap-2 p-1">
-                                                                                <Input
-                                                                                    placeholder="Organization name..."
-                                                                                    value={newOrgName}
-                                                                                    onChange={(e) => setNewOrgName(e.target.value)}
-                                                                                    className="h-8 text-sm"
-                                                                                    autoFocus
-                                                                                />
-                                                                                <Input
-                                                                                    placeholder="Address "
-                                                                                    value={newOrgAddress}
-                                                                                    onChange={(e) => setNewOrgAddress(e.target.value)}
-                                                                                    className="h-8 text-sm"
-                                                                                />
-                                                                                <Input
-                                                                                    placeholder="Email "
-                                                                                    value={newOrgEmail}
-                                                                                    onChange={(e) => setNewOrgEmail(e.target.value)}
-                                                                                    className="h-8 text-sm"
-                                                                                />
-                                                                                <Input
-                                                                                    placeholder="Telephone "
-                                                                                    value={newOrgTelephone}
-                                                                                    onChange={(e) => setNewOrgTelephone(e.target.value)}
-                                                                                    className="h-8 text-sm"
-                                                                                    onKeyDown={(e) => {
-                                                                                        if (e.key === 'Enter') { e.preventDefault(); handleAddOrganization(); }
-                                                                                        if (e.key === 'Escape') {
-                                                                                            setIsAddingOrg(false);
-                                                                                            setNewOrgName("");
-                                                                                            setNewOrgAddress("");
-                                                                                            setNewOrgEmail("");
-                                                                                            setNewOrgTelephone("");
-                                                                                        }
-                                                                                    }}
-                                                                                />
-
-                                                                                <Input
-                                                                                        placeholder="Fax No "
-                                                                                        value={newOrgFax}
-                                                                                        onChange={(e) => setNewOrgFax(e.target.value)}
-                                                                                        className="h-8 text-sm"
-                                                                                        disabled={isSubmittingOrg}
-                                                                                        onKeyDown={(e) => {
-                                                                                            if (e.key === 'Enter') { e.preventDefault(); handleAddOrganization(); }
-                                                                                            if (e.key === 'Escape') {
-                                                                                                setIsAddingOrg(false);
-                                                                                                setNewOrgName("");
-                                                                                                setNewOrgAddress("");
-                                                                                                setNewOrgEmail("");
-                                                                                                setNewOrgTelephone("");
-                                                                                                setNewOrgFax("");
-                                                                                            }
-                                                                                        }}
-                                                                                    />
-                                                                                <div className="flex gap-2 justify-end mt-1">
-                                                                                    <Button type="button" size="sm" variant="ghost" className="h-8" disabled={isSubmittingOrg} onClick={() => {
-                                                                                        setIsAddingOrg(false);
-                                                                                        setNewOrgName("");
-                                                                                        setNewOrgAddress("");
-                                                                                        setNewOrgEmail("");
-                                                                                        setNewOrgTelephone("");
-                                                                                        setNewOrgFax("");
-                                                                                    }}>
-                                                                                        <X className="h-4 w-4"/>
-                                                                                    </Button>
-                                                                                    <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization} disabled={!newOrgName.trim() || isSubmittingOrg}>
-                                                                                        {isSubmittingOrg ? <Loader2 className="h-4 w-4 animate-spin"/> : "Add"}
-                                                                                    </Button>
-                                                                                </div>
-                                                                            </div>
-                                                                        ) : (
-                                                                            <Button type="button" variant="ghost" className="w-full h-8 text-sm justify-start text-muted-foreground hover:text-foreground"
-                                                                                onClick={() => setIsAddingOrg(true)}>
-                                                                                <Plus className="mr-2 h-4 w-4"/>Add new organization
-                                                                            </Button>
-                                                                        )}
-                                                                    </div>
-                                                                </Command>
-                                                            </PopoverContent>
-                                                        </Popover>
-                                                        <FormMessage/>
-                                                    </FormItem>
-                                                );
-                                            }}/>
-                                        </div>
-
-
+                                        <FormField control={control} name="is_public_complaint" render={({field}) => (
+                                            <FormItem>
+                                                <FormLabel>Is this a Public Complaint? (මහජන පැමිණිල්ලක්ද?)</FormLabel>
+                                                <FormControl>
+                                                    <div className="flex gap-2">
+                                                        <Button type="button" variant={field.value ? "default" : "outline"} className="flex-1"
+                                                            disabled={isSubmitting} onClick={() => field.onChange(true)}>Yes</Button>
+                                                        <Button type="button" variant={!field.value ? "default" : "outline"} className="flex-1"
+                                                            disabled={isSubmitting} onClick={() => field.onChange(false)}>No</Button>
+                                                    </div>
+                                                </FormControl>
+                                                <FormMessage/>
+                                            </FormItem>
+                                        )}/>
                                     </div>
+
+                                    {/* Sender/Organization of the Letter */}
+                                    <FormField control={control} name="organization" render={({field}) => {
+                                        const search = orgSearch.toLowerCase();
+                                        const filteredOrgs = organizations.filter(o => !search || o.name.toLowerCase().includes(search));
+                                        const filteredUsers = assignees.filter(a => !search || a.name.toLowerCase().includes(search));
+                                        const selectedOrgName = field.value ? organizations.find(o => o.id === field.value)?.name : null;
+                                        // falls back to the tracked label (covers the "person" case)
+                                        const displayLabel = selectedOrgName || selectedSenderLabel;
+
+                                        return (
+                                            <FormItem className="w-full">
+                                                <FormLabel>Sender/Organization of the Letter</FormLabel>
+                                                <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
+                                                    <PopoverTrigger asChild>
+                                                        <FormControl>
+                                                            <Button variant="outline" role="combobox" disabled={isSubmitting}
+                                                                className={cn("w-full justify-between font-normal", !displayLabel && "text-muted-foreground")}>
+                                                                <span className="truncate text-start">
+                                                                    {displayLabel || "Select organization or person"}
+                                                                </span>
+                                                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
+                                                            </Button>
+                                                        </FormControl>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent
+                                                        className={cn("p-0", isAddingOrg ? "w-[420px]" : "w-[--radix-popover-trigger-width]")} align="start">
+                                                        <Command filter={() => 1}>
+                                                            {!isAddingOrg && (
+                                                                <>
+                                                                    <CommandInput placeholder="Search organization or person..." value={orgSearch} onValueChange={setOrgSearch}/>
+                                                                    <CommandList ref={orgListRef} className="max-h-[320px] overflow-y-auto overscroll-contain"
+                                                                        onWheel={(e) => { if (orgListRef.current) orgListRef.current.scrollTop += e.deltaY; }}>
+                                                                        <CommandEmpty>No organization or person found.</CommandEmpty>
+
+                                                                        {(field.value || selectedSenderLabel) && (
+                                                                            <CommandGroup>
+                                                                                <CommandItem onSelect={() => {
+                                                                                    applySender({organization: undefined, sender: '', email: '', telephone: '', label: ''});
+                                                                                    setOrgPopoverOpen(false);
+                                                                                }} className="text-muted-foreground">
+                                                                                    Clear selection
+                                                                                </CommandItem>
+                                                                            </CommandGroup>
+                                                                        )}
+
+                                                                        {filteredOrgs.length > 0 && (
+                                                                            <CommandGroup heading="Organizations">
+                                                                                {filteredOrgs.map(org => (
+                                                                                    <CommandItem key={`org-${org.id}`} value={`org-${org.id}`}
+                                                                                        onSelect={() => {
+                                                                                            applySender({
+                                                                                                organization: org.id,
+                                                                                                sender: org.address || '',
+                                                                                                email: org.email || '',
+                                                                                                telephone: org.telephone || '',
+                                                                                                label: org.name,
+                                                                                            });
+                                                                                            setOrgPopoverOpen(false);
+                                                                                            setOrgSearch("");
+                                                                                        }}>
+                                                                                        <Check className={cn("mr-2 h-4 w-4", field.value === org.id ? "opacity-100" : "opacity-0")}/>
+                                                                                        {org.name}
+                                                                                    </CommandItem>
+                                                                                ))}
+                                                                            </CommandGroup>
+                                                                        )}
+
+                                                                        {filteredUsers.length > 0 && (
+                                                                            <CommandGroup heading="System Users">
+                                                                                {filteredUsers.map(user => (
+                                                                                    <CommandItem key={`user-${user.id}`} value={`user-${user.id}`}
+                                                                                        onSelect={() => {
+                                                                                            applySender({organization: undefined, sender: user.name, email: '', telephone: '', label: user.name});
+                                                                                            setOrgPopoverOpen(false);
+                                                                                            setOrgSearch("");
+                                                                                        }}>
+                                                                                        <Check className="mr-2 h-4 w-4 opacity-0"/>
+                                                                                        {user.name}
+                                                                                    </CommandItem>
+                                                                                ))}
+                                                                            </CommandGroup>
+                                                                        )}
+                                                                    </CommandList>
+                                                                </>
+                                                            )}
+
+                                                            {/* the "Add new organization" footer */}
+                                                            <div className={cn("p-2", !isAddingOrg && "border-t")}>
+                                                                {isAddingOrg ? (
+                                                                    <div className="flex flex-col gap-2 p-1">
+                                                                        <Input placeholder="Organization name..." value={newOrgName}
+                                                                            onChange={(e) => setNewOrgName(e.target.value)} className="h-8 text-sm" autoFocus/>
+                                                                        <Input placeholder="Address " value={newOrgAddress}
+                                                                            onChange={(e) => setNewOrgAddress(e.target.value)} className="h-8 text-sm"/>
+                                                                        <Input placeholder="Email " value={newOrgEmail}
+                                                                            onChange={(e) => setNewOrgEmail(e.target.value)} className="h-8 text-sm"/>
+                                                                        <Input placeholder="Telephone " value={newOrgTelephone}
+                                                                            onChange={(e) => setNewOrgTelephone(e.target.value)} className="h-8 text-sm"/>
+                                                                        <Input placeholder="Fax No " value={newOrgFax}
+                                                                            onChange={(e) => setNewOrgFax(e.target.value)} className="h-8 text-sm"
+                                                                            disabled={isSubmittingOrg}
+                                                                            onKeyDown={(e) => {
+                                                                                if (e.key === 'Enter') { e.preventDefault(); handleAddOrganization(); }
+                                                                                if (e.key === 'Escape') {
+                                                                                    setIsAddingOrg(false);
+                                                                                    setNewOrgName(""); setNewOrgAddress(""); setNewOrgEmail("");
+                                                                                    setNewOrgTelephone(""); setNewOrgFax("");
+                                                                                }
+                                                                            }}/>
+                                                                        <div className="flex gap-2 justify-end mt-1">
+                                                                            <Button type="button" size="sm" variant="ghost" className="h-8" disabled={isSubmittingOrg}
+                                                                                onClick={() => {
+                                                                                    setIsAddingOrg(false);
+                                                                                    setNewOrgName(""); setNewOrgAddress(""); setNewOrgEmail("");
+                                                                                    setNewOrgTelephone(""); setNewOrgFax("");
+                                                                                }}>
+                                                                                <X className="h-4 w-4"/>
+                                                                            </Button>
+                                                                            <Button type="button" size="sm" className="h-8" onClick={handleAddOrganization}
+                                                                                disabled={!newOrgName.trim() || isSubmittingOrg}>
+                                                                                {isSubmittingOrg ? <Loader2 className="h-4 w-4 animate-spin"/> : "Add"}
+                                                                            </Button>
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <Button type="button" variant="ghost"
+                                                                        className="w-full h-8 text-sm justify-start text-muted-foreground hover:text-foreground"
+                                                                        onClick={() => setIsAddingOrg(true)}>
+                                                                        <Plus className="mr-2 h-4 w-4"/>Add new organization
+                                                                    </Button>
+                                                                )}
+                                                            </div>
+                                                        </Command>
+                                                    </PopoverContent>
+                                                </Popover>
+                                                <FormMessage/>
+                                            </FormItem>
+                                        );
+                                    }}/>
 
                                     {/* Registered Postal Number — shown only when Source = "Registered Post" */}
                                     {isRegisteredPost && (
@@ -859,11 +812,10 @@ const handleAddOrganization = async () => {
                                         )}/>
                                     )}
 
-                                   
                                     {/* Sender's Address */}
                                     <FormField control={control} name="sender" render={({field}) => (
                                         <FormItem>
-                                            <FormLabel>Sender's Address</FormLabel>
+                                            <FormLabel>Sender&apos;s Address</FormLabel>
                                             <FormControl>
                                                 <Input {...field} disabled={isSubmitting} placeholder="Enter sender's address"/>
                                             </FormControl>
@@ -872,57 +824,56 @@ const handleAddOrganization = async () => {
                                     )}/>
 
                                     {/* Email | Telephone */}
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                            <FormField control={control} name="email" render={({field}) => (
-                                                <FormItem>
-                                                    <FormLabel>Email</FormLabel>
-                                                    <FormControl>
-                                                        <Input {...field} placeholder="Enter sender's email" disabled={isSubmitting}/>
-                                                    </FormControl>
-                                                    <FormMessage/>
-                                                </FormItem>
-                                            )}/>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                        <FormField control={control} name="email" render={({field}) => (
+                                            <FormItem>
+                                                <FormLabel>Email</FormLabel>
+                                                <FormControl>
+                                                    <Input {...field} placeholder="Enter sender's email" disabled={isSubmitting}/>
+                                                </FormControl>
+                                                <FormMessage/>
+                                            </FormItem>
+                                        )}/>
 
-                                            <FormField control={control} name="telephone" render={({field}) => (
-                                                <FormItem>
-                                                    <FormLabel>Telephone</FormLabel>
-                                                    <FormControl>
-                                                        <Input {...field} placeholder="Telephone Number or Fax Number" disabled={isSubmitting}/>
-                                                    </FormControl>
-                                                    <FormMessage/>
-                                                </FormItem>
-                                            )}/>
-                                        </div>
+                                        <FormField control={control} name="telephone" render={({field}) => (
+                                            <FormItem>
+                                                <FormLabel>Telephone</FormLabel>
+                                                <FormControl>
+                                                    <Input {...field} placeholder="Telephone Number or Fax Number" disabled={isSubmitting}/>
+                                                </FormControl>
+                                                <FormMessage/>
+                                            </FormItem>
+                                        )}/>
+                                    </div>
 
-                                        {/* Cheque No / Money Order No | Sender's Subject No */}
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                            <FormField control={control} name="other" render={({field}) => (
-                                                <FormItem>
-                                                    <FormLabel>Cheque No / Money Order No</FormLabel>
-                                                    <FormControl>
-                                                        <Textarea {...field} disabled={isSubmitting} placeholder="CH- Cheque Number, MO- Money Order Number" className="min-h-[38px] h-[38px] resize-none"/>
-                                                    </FormControl>
-                                                    <FormMessage/>
-                                                </FormItem>
-                                            )}/>
+                                    {/* Cheque No / Money Order No | Sender's Subject No */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                        <FormField control={control} name="other" render={({field}) => (
+                                            <FormItem>
+                                                <FormLabel>Cheque No / Money Order No</FormLabel>
+                                                <FormControl>
+                                                    <Textarea {...field} disabled={isSubmitting} placeholder="CH- Cheque Number, MO- Money Order Number" className="min-h-[38px] h-[38px] resize-none"/>
+                                                </FormControl>
+                                                <FormMessage/>
+                                            </FormItem>
+                                        )}/>
 
-                                            <FormField control={control} name="sender_subject_no" render={({field}) => (
-                                                <FormItem>
-                                                    <FormLabel>Sender's Subject No</FormLabel>
-                                                    <FormControl>
-                                                        <Input {...field} disabled={isSubmitting} placeholder="Enter sender's subject number"/>
-                                                    </FormControl>
-                                                    <FormMessage/>
-                                                </FormItem>
-                                            )}/>
-                                        </div>
+                                        <FormField control={control} name="sender_subject_no" render={({field}) => (
+                                            <FormItem>
+                                                <FormLabel>Sender&apos;s Subject No</FormLabel>
+                                                <FormControl>
+                                                    <Input {...field} disabled={isSubmitting} placeholder="Enter sender's subject number"/>
+                                                </FormControl>
+                                                <FormMessage/>
+                                            </FormItem>
+                                        )}/>
+                                    </div>
 
-                                    {/* Subject/Content of the Letter  */}
+                                    {/* Subject/Content of the Letter */}
                                     <FormField control={control} name="subject" render={({field}) => (
                                         <FormItem>
                                             <div className="flex items-center justify-between">
                                                 <FormLabel>Subject/Content of the Letter</FormLabel>
-                                                {/* NEW — live character counter, turns amber near the limit and red once exceeded */}
                                                 <span className={cn(
                                                     "text-xs",
                                                     subjectExceeded ? "text-destructive font-medium" : subjectNearLimit ? "text-amber-600" : "text-muted-foreground"
@@ -935,7 +886,7 @@ const handleAddOrganization = async () => {
                                                     placeholder="Enter subject or content of the letter"
                                                     className="min-h-[160px]"/>
                                             </FormControl>
-                                            
+
                                             {otherValue.trim() && (
                                                 <div className="rounded-md border bg-muted/30 p-2.5 text-sm">
                                                     <span className="text-xs font-medium text-muted-foreground block mb-1">
@@ -944,79 +895,42 @@ const handleAddOrganization = async () => {
                                                     <p className="whitespace-pre-wrap">
                                                         {field.value}
                                                         {"\n"}
-                                                        {"\n"}
-                                                        <span className="font-medium">(Cheque No : {otherValue.trim()})</span>
+                                                        <span className="font-medium">(Cheque No / Money Order No: {otherValue.trim()})</span>
                                                     </p>
                                                 </div>
                                             )}
                                             <FormMessage/>
                                         </FormItem>
                                     )}/>
- {/* NEW — Public Complaint (මහජන පැමිණිල්ලක්ද) Yes/No */}
-                                   <FormField control={control} name="is_public_complaint" render={({field}) => (
-                                       <FormItem>
-                                          <FormLabel>Is this a Public Complaint? (මහජන පැමිණිල්ලක්ද?)</FormLabel>
-                                           <FormControl>
-                                               <div className="flex gap-2">
-                                                  <Button
-                                                       type="button"
-                                                       variant={field.value ? "default" : "outline"}
-                                                      size="sm"
-                                                       className="flex-1"
-                                                      disabled={isSubmitting}
-                                                      onClick={() => field.onChange(true)}
-                                                   >
-                                                       Yes
-                                                   </Button>
-                                                   <Button
-                                                       type="button"
-                                                       variant={!field.value ? "default" : "outline"}
-                                                      size="sm"
-                                                       className="flex-1"
-                                                      disabled={isSubmitting}
-                                                      onClick={() => field.onChange(false)}
-                                                  >
-                                                       No
-                                                  </Button>
-                                              </div>
-                                           </FormControl>
-                                           <FormMessage/>
-                                       </FormItem>
-                                   )}/>
 
-                                {/* NEW — optional: send an Initials By confirmation request right away.
-    Leave unset to skip this for now — it can always be sent later from
-    the Letter View page. Pre-selected to the default candidate for
-    convenience, but nothing is sent unless this stays selected on submit. */}
-<div className="space-y-2">
-    <FormLabel>Send for Initials Confirmation (optional)</FormLabel>
-    <Select
-        value={selectedInitialsByUserId ? selectedInitialsByUserId.toString() : "none"}
-        onValueChange={(v) => setSelectedInitialsByUserId(v === "none" ? 0 : parseInt(v))}
-    >
-        <SelectTrigger className="w-full">
-            <SelectValue placeholder="Don't send yet"/>
-        </SelectTrigger>
-        <SelectContent>
-            <SelectItem value="none">Don&apos;t send yet</SelectItem>
-            {initialsByCandidates.map(c => (
-                <SelectItem key={c.id} value={c.id.toString()}>
-                    {c.name}{c.is_default ? ' (default)' : ''}
-                </SelectItem>
-            ))}
-        </SelectContent>
-    </Select>
-    <p className="text-xs text-muted-foreground">
-        {selectedInitialsByUserId
-            ? "A confirmation request will be sent to this person as soon as the letter is created."
-            : "No request will be sent now — you can send one later from the letter's page."}
-    </p>
-</div>   
+                                    {/* Optional: send an Initials By confirmation request right away.
+                                        Pre-selected to the default candidate for convenience. */}
+                                    <div className="space-y-2">
+                                        <FormLabel>Send for Initials Confirmation (optional)</FormLabel>
+                                        <Select
+                                            value={selectedInitialsByUserId ? selectedInitialsByUserId.toString() : "none"}
+                                            onValueChange={(v) => setSelectedInitialsByUserId(v === "none" ? 0 : parseInt(v))}
+                                        >
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Don't send yet"/>
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">Don&apos;t send yet</SelectItem>
+                                                {initialsByCandidates.map(c => (
+                                                    <SelectItem key={c.id} value={c.id.toString()}>
+                                                        {c.name}{c.is_default ? ' (default)' : ''}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground">
+                                            {selectedInitialsByUserId
+                                                ? "A confirmation request will be sent to this person as soon as the letter is created."
+                                                : "No request will be sent now — you can send one later from the letter's page."}
+                                        </p>
+                                    </div>
 
-
-                                    {/* Departments Multi-select */}
-                                   
-                                       {/* Departments Multi-select */}
+                                    {/* Sections multi-select */}
                                     <FormField control={control} name="department_ids" render={() => (
                                         <FormItem>
                                             <div className="flex items-center justify-between">
@@ -1036,7 +950,7 @@ const handleAddOrganization = async () => {
                                             {selectedDepartmentIds.length > 0 ? (
                                                 <div className="flex flex-wrap gap-1">
                                                     {selectedDepartmentIds.map(accId => {
-                                                        const da = departmentAccounts.find(d => d.id === accId);  
+                                                        const da = departmentAccounts.find(d => d.id === accId);
                                                         return da ? (
                                                             <Badge key={accId} variant="secondary" className="text-xs gap-1">
                                                                 {da.department_unit_name || da.department_name}
@@ -1058,7 +972,7 @@ const handleAddOrganization = async () => {
                                                     {departmentAccounts.length === 0 ? (
                                                         <p className="text-sm text-muted-foreground col-span-2">No section accounts have been created yet</p>
                                                     ) : departmentAccounts.map(da => (
-                                                       <div key={da.id} className="flex items-center space-x-2">
+                                                        <div key={da.id} className="flex items-center space-x-2">
                                                             <Checkbox
                                                                 id={`dept-${da.id}`}
                                                                 checked={selectedDepartmentIds.includes(da.id)}
@@ -1076,105 +990,107 @@ const handleAddOrganization = async () => {
                                         </FormItem>
                                     )}/>
 
-                          {/* Assignees Multi-select */}
-                                     
-                        <FormField control={control} name="assignee_ids" render={() => (
-                            <FormItem>
-                                <div className="flex items-center justify-between">
-                                    <FormLabel>Assignees</FormLabel>
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-7 px-2 text-xs"
-                                        onClick={() => setIsEditingAssignees(prev => !prev)}
-                                        disabled={isSubmitting}
-                                    >
-                                        {isEditingAssignees ? 'Done' : 'Edit'}
-                                    </Button>
-                                </div>
+                                    {/* Assignees multi-select */}
+                                    <FormField control={control} name="assignee_ids" render={() => (
+                                        <FormItem>
+                                            <div className="flex items-center justify-between">
+                                                <FormLabel>Assignees</FormLabel>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 px-2 text-xs"
+                                                    onClick={() => setIsEditingAssignees(prev => !prev)}
+                                                    disabled={isSubmitting}
+                                                >
+                                                    {isEditingAssignees ? 'Done' : 'Edit'}
+                                                </Button>
+                                            </div>
 
-                                {selectedAssigneeIds.length > 0 ? (
-                                    <div className="flex flex-wrap gap-1">
-                                        {selectedAssigneeIds.map(assigneeId => {
-                                            const a = assignees.find(x => x.id === assigneeId);
-                                            return a ? (
-                                                <Badge key={assigneeId} variant="secondary" className="text-xs gap-1">
-                                                    {a.name}
-                                                    {isEditingAssignees && (
-                                                        <button type="button" onClick={() => toggleAssignee(assigneeId)} className="ml-0.5 hover:text-destructive">
-                                                            <X className="h-3 w-3"/>
-                                                        </button>
-                                                    )}
-                                                </Badge>
-                                            ) : null;
-                                        })}
-                                    </div>
-                                ) : (
-                                    <p className="text-sm text-muted-foreground">No assignees selected</p>
-                                )}
-
-                                {isEditingAssignees && (
-                                    <div className="space-y-2 border rounded-md p-3">
-                                        {/* NEW — narrow down a long assignee list by Department, then
-                                            Sub-Unit (if that department has any), plus free-text search */}
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <Select
-                                                value={assigneeDeptFilter ? assigneeDeptFilter.toString() : "0"}
-                                                onValueChange={(v) => setAssigneeDeptFilter(parseInt(v) || 0)}
-                                            >
-                                                <SelectTrigger className="h-8 text-xs">
-                                                    <SelectValue placeholder="Filter by section"/>
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="0">All sections</SelectItem>
-                                                    {departments.map(d => (
-                                                        <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                            <Select
-                                                value={assigneeUnitFilter ? assigneeUnitFilter.toString() : "0"}
-                                                onValueChange={(v) => setAssigneeUnitFilter(parseInt(v) || 0)}
-                                                disabled={!assigneeDeptFilter || assigneeUnits.length === 0}
-                                            >
-                                                <SelectTrigger className="h-8 text-xs">
-                                                    <SelectValue placeholder={assigneeUnits.length === 0 ? "No sub-units" : "Filter by sub-unit"}/>
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="0">All sub-units</SelectItem>
-                                                    {assigneeUnits.map(u => (
-                                                        <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <Input
-                                            placeholder="Search assignees by name..."
-                                            value={assigneeSearch}
-                                            onChange={(e) => setAssigneeSearch(e.target.value)}
-                                            className="h-8 text-xs"
-                                        />
-                                        <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
-                                            {filteredAssignees.length === 0 ? (
-                                                <p className="text-sm text-muted-foreground col-span-2">No assignees match this filter</p>
-                                            ) : filteredAssignees.map(a => (
-                                                <div key={a.id} className="flex items-center space-x-2">
-                                                    <Checkbox
-                                                        id={`assignee-${a.id}`}
-                                                        checked={selectedAssigneeIds.includes(a.id)}
-                                                        onCheckedChange={() => toggleAssignee(a.id)}
-                                                        disabled={isSubmitting}
-                                                    />
-                                                    <label htmlFor={`assignee-${a.id}`} className="text-sm cursor-pointer">{a.name}</label>
+                                            {selectedAssigneeIds.length > 0 ? (
+                                                <div className="flex flex-wrap gap-1">
+                                                    {selectedAssigneeIds.map(assigneeId => {
+                                                        const a = assignees.find(x => x.id === assigneeId);
+                                                        return a ? (
+                                                            <Badge key={assigneeId} variant="secondary" className="text-xs gap-1">
+                                                                {a.name}
+                                                                {isEditingAssignees && (
+                                                                    <button type="button" onClick={() => toggleAssignee(assigneeId)} className="ml-0.5 hover:text-destructive">
+                                                                        <X className="h-3 w-3"/>
+                                                                    </button>
+                                                                )}
+                                                            </Badge>
+                                                        ) : null;
+                                                    })}
                                                 </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                                <FormMessage/>
-                            </FormItem>
-                        )}/>
+                                            ) : (
+                                                <p className="text-sm text-muted-foreground">No assignees selected</p>
+                                            )}
+
+                                            {isEditingAssignees && (
+                                                <div className="space-y-2 border rounded-md p-3">
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <Select
+                                                            value={assigneeDeptFilter ? assigneeDeptFilter.toString() : "0"}
+                                                            onValueChange={(v) => setAssigneeDeptFilter(parseInt(v) || 0)}
+                                                        >
+                                                            <SelectTrigger className="h-8 text-xs">
+                                                                <SelectValue placeholder="Select a section"/>
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="0">Select a section</SelectItem>
+                                                                {departments.map(d => (
+                                                                    <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                        <Select
+                                                            value={assigneeUnitFilter ? assigneeUnitFilter.toString() : "0"}
+                                                            onValueChange={(v) => setAssigneeUnitFilter(parseInt(v) || 0)}
+                                                            disabled={!assigneeDeptFilter || assigneeUnits.length === 0}
+                                                        >
+                                                            <SelectTrigger className="h-8 text-xs">
+                                                                <SelectValue placeholder={assigneeUnits.length === 0 ? "No sub-units" : "Filter by sub-unit"}/>
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="0">All sub-units</SelectItem>
+                                                                {assigneeUnits.map(u => (
+                                                                    <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <Input
+                                                        placeholder="Search assignees by name..."
+                                                        value={assigneeSearch}
+                                                        onChange={(e) => setAssigneeSearch(e.target.value)}
+                                                        className="h-8 text-xs"
+                                                    />
+                                                    <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                                                        {!hasAssigneeScope ? (
+                                                            <p className="text-sm text-muted-foreground col-span-2">
+                                                                Select a section (and sub-unit) to see its assignees, or search by name.
+                                                            </p>
+                                                        ) : filteredAssignees.length === 0 ? (
+                                                            <p className="text-sm text-muted-foreground col-span-2">No assignees match this filter</p>
+                                                        ) : filteredAssignees.map(a => (
+                                                            <div key={a.id} className="flex items-center space-x-2">
+                                                                <Checkbox
+                                                                    id={`assignee-${a.id}`}
+                                                                    checked={selectedAssigneeIds.includes(a.id)}
+                                                                    onCheckedChange={() => toggleAssignee(a.id)}
+                                                                    disabled={isSubmitting}
+                                                                />
+                                                                <label htmlFor={`assignee-${a.id}`} className="text-sm cursor-pointer">{a.name}</label>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <FormMessage/>
+                                        </FormItem>
+                                    )}/>
+
                                     {/* Attachments */}
                                     <FormField control={control} name="attachments" render={() => (
                                         <FormItem>
@@ -1195,34 +1111,33 @@ const handleAddOrganization = async () => {
                                             <FormMessage/>
 
                                             <div className="space-y-4">
-    {attachments?.map((attachment, index) => (
-        <div key={index} className="space-y-2">
-            <FormField control={control} name={`attachments.${index}.file`} render={() => (
-                <FormItem><FormMessage/></FormItem>
-            )}/>
-            <FormField control={control} name={`attachments.${index}.name`} render={({field}) => (
-                <FormItem>
-                    <FormControl>
-                        <div className="flex gap-2 items-center relative">
-                            <Input {...field} placeholder="Enter file name" disabled={isSubmitting}/>
-                            <Button type="button" variant="ghost" size="icon"
-                                className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
-                                onClick={() => removeAttachment(index)} disabled={isSubmitting}>
-                                <X className="h-4 w-4"/>
-                            </Button>
-                        </div>
-                    </FormControl>
-                    <FormMessage/>
-                </FormItem>
-            )}/>
-            {/* NEW: file size display */}
-            <div className="flex justify-between text-xs text-muted-foreground px-1">
-                <span className="truncate">{attachment.file.name}</span>
-                <span>{formatFileSize(attachment.file.size)}</span>
-            </div>
-        </div>
-    ))}
-</div>
+                                                {attachments?.map((attachment, index) => (
+                                                    <div key={index} className="space-y-2">
+                                                        <FormField control={control} name={`attachments.${index}.file`} render={() => (
+                                                            <FormItem><FormMessage/></FormItem>
+                                                        )}/>
+                                                        <FormField control={control} name={`attachments.${index}.name`} render={({field}) => (
+                                                            <FormItem>
+                                                                <FormControl>
+                                                                    <div className="flex gap-2 items-center relative">
+                                                                        <Input {...field} placeholder="Enter file name" disabled={isSubmitting}/>
+                                                                        <Button type="button" variant="ghost" size="icon"
+                                                                            className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+                                                                            onClick={() => removeAttachment(index)} disabled={isSubmitting}>
+                                                                            <X className="h-4 w-4"/>
+                                                                        </Button>
+                                                                    </div>
+                                                                </FormControl>
+                                                                <FormMessage/>
+                                                            </FormItem>
+                                                        )}/>
+                                                        <div className="flex justify-between text-xs text-muted-foreground px-1">
+                                                            <span className="truncate">{attachment.file.name}</span>
+                                                            <span>{formatFileSize(attachment.file.size)}</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </FormItem>
                                     )}/>
 

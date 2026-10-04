@@ -59,7 +59,7 @@ interface LetterDetail {
     recommended_to?: {id: number; name: string} | null;
     attachments: AttachmentItem[];
     completion_file_name?: string | null;
-     is_public_complaint?: boolean;  
+    is_public_complaint?: boolean;
     cheque_deposited?: boolean;
     cheque_deposit_date?: string | null;
     cheque_account_no?: string | null;
@@ -69,10 +69,9 @@ interface LetterDetail {
     forwarded_to?: {id: number; name: string} | null;
     initials_by?: {id: number; name: string} | null;
     initials_by_notes?: string | null;
-    initials_by_pending?: {id: number; name: string} | null; 
-    // CHANGED — Order By is now two separate selections that combine into
-    // one seal: a role marker (නි.කො / ස.කො) and an action phrase
-    // (කරු. ඉදිරි කටයුතු සඳහා, etc), instead of one single Order By value.
+    initials_by_pending?: {id: number; name: string} | null;
+    // Order By = two separate selections that combine into one seal:
+    // a role marker (නි.කො / ස.කො) and an action phrase (කරු. ඉදිරි කටයුතු සඳහා, etc)
     order_by_role?: {id: number; name: string} | null;
     order_by_action?: {id: number; name: string} | null;
     remarks_count?: number;
@@ -130,8 +129,7 @@ interface AssigneeStatus {
     status_since?: string | null;
     status_days?: number | null;
     can_edit: boolean;
-    assigned_by_name?: string | null; 
-    
+    assigned_by_name?: string | null;
 }
 
 interface Department {id: number; name: string}
@@ -144,11 +142,16 @@ interface Status {
 }
 interface Assignee {id: number; name: string; department_id?: number | null; department_unit_id?: number | null}
 
+interface DepartmentAccount {
+    id: number;
+    department_id: number;
+    department_name: string;
+    department_unit_id?: number | null;
+    department_unit_name?: string | null;
+}
+
 interface InitialsByCandidate {id: number; name: string; is_default: boolean}
 
-// CHANGED — Order By options now come with a category so the picker can
-// split them into the Role list (නි.කො/ස.කො) and the Action list
-// (කරු. ඉදිරි කටයුතු සඳහා, etc).
 interface OrderByOptionItem {id: number; name: string; category: 'role' | 'action'}
 
 type LeftTab = 'remarks' | 'history' | 'remarkLog';
@@ -157,7 +160,7 @@ const getStatusClassName = (status: string): string => {
     if (status === 'New') return 'bg-sky-100 text-sky-800 dark:bg-sky-800 dark:text-sky-200';
     if (status === 'Assigned') return 'bg-orange-100 text-yellow-800 dark:bg-orange-800 dark:text-yellow-200';
     if (status === 'In Progress') return 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200';
-   if (status === 'Not Relevant') return 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200';
+    if (status === 'Not Relevant') return 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200';
     return 'bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-200';
 };
 
@@ -359,7 +362,7 @@ export default function LetterViewPage() {
     const [chequeBranch, setChequeBranch] = useState("");
     const [isEditingCheque, setIsEditingCheque] = useState(false);
     const [isSavingCheque, setIsSavingCheque] = useState(false);
-    const [departmentAccounts, setDepartmentAccounts] = useState([]);
+    const [departmentAccounts, setDepartmentAccounts] = useState<DepartmentAccount[]>([]);
 
     const [remarkHistory, setRemarkHistory] = useState<RemarkHistoryEntry[]>([]);
     const [remarkHistoryLoading, setRemarkHistoryLoading] = useState(false);
@@ -394,22 +397,19 @@ export default function LetterViewPage() {
     const [forwardUnits, setForwardUnits] = useState<{id: number; name: string}[]>([]);
 
     const [initialsByCandidates, setInitialsByCandidates] = useState<InitialsByCandidate[]>([]);
-    const [selectedPendingCandidateId, setSelectedPendingCandidateId] = useState<number>(0);   // NEW — admin's dropdown selection
-   const [isAssigningInitialsBy, setIsAssigningInitialsBy] = useState(false);
-   const [confirmNotes, setConfirmNotes] = useState("");   // NEW — the candidate's own notes when confirming
-   const [isConfirmingInitialsBy, setIsConfirmingInitialsBy] = useState(false);
+    const [selectedPendingCandidateId, setSelectedPendingCandidateId] = useState<number>(0);   // admin's dropdown selection
+    const [isAssigningInitialsBy, setIsAssigningInitialsBy] = useState(false);
+    const [confirmNotes, setConfirmNotes] = useState("");   // the candidate's own notes when confirming
+    const [isConfirmingInitialsBy, setIsConfirmingInitialsBy] = useState(false);
 
-    // CHANGED — Order By is now two independently-managed lists: Role
-    // (නි.කො / ස.කො) and Action (කරු. ඉදිරි කටයුතු සඳහා, etc). Both are
-    // fetched from the same /v1/order-by-option/list endpoint and split
-    // client-side by `category`.
+    // Order By = two independent lists: Role (නි.කො / ස.කො) and Action
+    // (කරු. ඉදිරි කටයුතු සඳහා, etc), both from /v1/order-by-option/list, split by `category`.
     const [orderByRoleOptions, setOrderByRoleOptions] = useState<OrderByOptionItem[]>([]);
     const [orderByActionOptions, setOrderByActionOptions] = useState<OrderByOptionItem[]>([]);
     const [selectedOrderByRoleId, setSelectedOrderByRoleId] = useState<number>(0);
     const [originalOrderByRoleId, setOriginalOrderByRoleId] = useState<number>(0);
     const [selectedOrderByActionId, setSelectedOrderByActionId] = useState<number>(0);
     const [originalOrderByActionId, setOriginalOrderByActionId] = useState<number>(0);
-    // separate "add missing" inline forms for each category
     const [isAddingRole, setIsAddingRole] = useState(false);
     const [newRoleName, setNewRoleName] = useState("");
     const [isSavingRole, setIsSavingRole] = useState(false);
@@ -425,8 +425,6 @@ export default function LetterViewPage() {
         forwardChecked !== originalForwardChecked ||
         selectedRecommendedToId !== originalRecommendedToId ||
         sendToRecommendation !== originalSendToRecommendation ||
-        selectedOrderByRoleId !== originalOrderByRoleId ||
-    selectedOrderByActionId !== originalOrderByActionId;
         selectedOrderByRoleId !== originalOrderByRoleId ||
         selectedOrderByActionId !== originalOrderByActionId;
 
@@ -452,7 +450,11 @@ export default function LetterViewPage() {
             .catch(() => setRecommendedUnits([]));
     }, [recommendedDeptFilter]);
 
-    const filteredAssignees = allAssignees.filter(a =>
+    // CHANGED — the assignee list stays EMPTY until a Section (and optionally a
+    // Sub-Unit) is chosen, or a name is typed in the search box.
+    const hasAssigneeScope = !!assigneeDeptFilter || !!assigneeSearch.trim();
+
+    const filteredAssignees = !hasAssigneeScope ? [] : allAssignees.filter(a =>
         (!assigneeDeptFilter || a.department_id === assigneeDeptFilter) &&
         (!assigneeUnitFilter || a.department_unit_id === assigneeUnitFilter) &&
         (!assigneeSearch.trim() || a.name.toLowerCase().includes(assigneeSearch.trim().toLowerCase()))
@@ -495,15 +497,18 @@ export default function LetterViewPage() {
     const fetchLetter = useCallback(async () => {
         try {
             setIsLoading(true);
+            // CHANGED — the 3 OPTIONAL requests have a .catch: if one of them
+            // fails (e.g. /managed-file/mine), the letter itself still loads
+            // instead of showing "Letter not found".
             const [letterRes, deptRes, statusRes, assigneeRes, deptAccountsRes, initialsByRes, orderByRes, myFilesRes] = await Promise.all([
                 api.get(`/v1/letter/${id}`),
                 api.get('/v1/department/list'),
                 api.get('/v1/status/list'),
                 api.get('/v1/system_user/names'),
                 api.get('/v1/system_user/department-accounts'),
-                api.get('/v1/system_user/by-permission/letter.initials_by'),
-                api.get('/v1/order-by-option/list'),   // returns items from BOTH categories — split below
-                api.get('/v1/managed-file/mine'),
+                api.get('/v1/system_user/by-permission/letter.initials_by').catch(() => ({data: {success: false, data: []}})),
+                api.get('/v1/order-by-option/list').catch(() => ({data: {success: false, data: []}})),
+                api.get('/v1/managed-file/mine').catch(() => ({data: {success: false, data: []}})),
             ]);
             const data: LetterDetail = letterRes.data.data;
             setLetter(data);
@@ -540,13 +545,11 @@ export default function LetterViewPage() {
 
             const candidates: InitialsByCandidate[] = initialsByRes.data.success ? initialsByRes.data.data : [];
             setInitialsByCandidates(candidates);
-             // NEW — pre-select the currently pending candidate (if any) in
-           // the admin dropdown, so re-opening the page shows the live state
-           setSelectedPendingCandidateId(data.initials_by_pending?.id || 0);
-           setConfirmNotes("");
+            // pre-select the currently pending candidate (if any) in the admin dropdown
+            setSelectedPendingCandidateId(data.initials_by_pending?.id || 0);
+            setConfirmNotes("");
 
-            // CHANGED — split the combined Order By option list into Role
-            // (නි.කො/ස.කො) and Action (කරු. ...) sub-lists by category.
+            // split the combined Order By option list into Role and Action sub-lists
             const allOrderByOptions: OrderByOptionItem[] = orderByRes.data.success ? orderByRes.data.data : [];
             setOrderByRoleOptions(allOrderByOptions.filter(o => o.category === 'role'));
             setOrderByActionOptions(allOrderByOptions.filter(o => o.category === 'action'));
@@ -609,8 +612,7 @@ export default function LetterViewPage() {
         }
     }, [id]);
 
-    // NEW — quick-add for a missing Role option (නි.කො / ස.කො).
-    // category='role' is passed so it lands in the right list on refetch.
+    // quick-add for a missing Role option (නි.කො / ස.කො)
     const handleAddRole = async () => {
         if (!newRoleName.trim()) {
             toast.error("Enter a name for the new role");
@@ -632,7 +634,7 @@ export default function LetterViewPage() {
         }
     };
 
-    // NEW — quick-add for a missing Action option (කරු. ඉදිරි කටයුතු සඳහා, etc)
+    // quick-add for a missing Action option (කරු. ඉදිරි කටයුතු සඳහා, etc)
     const handleAddAction = async () => {
         if (!newActionName.trim()) {
             toast.error("Enter a name for the new action");
@@ -678,7 +680,7 @@ export default function LetterViewPage() {
 
     const handleSaveAssigneeStatus = async () => {
         if (assigneeStatusFileNameRequired && !assigneeStatusDraftFileName.trim()) {
-            toast.error(`File Name is required when setting status to "${draftAssigneeStatusObj?.name}"`);
+            toast.error(`File Number is required when setting status to "${draftAssigneeStatusObj?.name}"`);
             return;
         }
         if (assigneeStatusCopiesForwardedRequired && !assigneeStatusDraftCopiesForwardedTo.trim()) {
@@ -755,7 +757,7 @@ export default function LetterViewPage() {
 
     const handleSave = async () => {
         if (isFileNameRequiredNow && !completionFileName.trim()) {
-            toast.error(`File Name is required when setting status to "${selectedStatusObj?.name}"`);
+            toast.error(`File Number is required when setting status to "${selectedStatusObj?.name}"`);
             return;
         }
         if (sendToRecommendation && !selectedRecommendedToId) {
@@ -780,6 +782,8 @@ export default function LetterViewPage() {
             setOriginalAssigneeIds(selectedAssigneeIds);
             setOriginalRecommendedToId(selectedRecommendedToId);
             setOriginalSendToRecommendation(sendToRecommendation);
+            setOriginalForwardedToId(selectedForwardedToId);
+            setOriginalForwardChecked(forwardChecked);
             setOriginalOrderByRoleId(selectedOrderByRoleId);
             setOriginalOrderByActionId(selectedOrderByActionId);
             fetchLetter();
@@ -830,47 +834,62 @@ export default function LetterViewPage() {
         }
     };
 
-    // NEW — admin step: sends the "please confirm" request to whoever is
-// selected. Does NOT set the actual Initials By value shown in the seal —
-// that only happens once the selected person confirms below.
-const handleAssignInitialsBy = async () => {
-    try {
-        setIsAssigningInitialsBy(true);
-        await api.put(`/v1/letter/${id}/initials-by/assign`, {
-            initials_by_pending_user_id: selectedPendingCandidateId || null,
-        });
-        toast.success(selectedPendingCandidateId ? "Initials By request sent" : "Initials By request cancelled");
-        fetchLetter();
-    } catch (error) {
-        toast.error(error.response?.data?.message || "Failed to send Initials By request");
-    } finally {
-        setIsAssigningInitialsBy(false);
-    }
-};
+    // admin step: sends the "please confirm" request to whoever is selected.
+    // Does NOT set the actual Initials By value shown in the seal — that only
+    // happens once the selected person confirms below.
+    const handleAssignInitialsBy = async () => {
+        try {
+            setIsAssigningInitialsBy(true);
+            await api.put(`/v1/letter/${id}/initials-by/assign`, {
+                initials_by_pending_user_id: selectedPendingCandidateId || null,
+            });
+            toast.success(selectedPendingCandidateId ? "Initials By request sent" : "Initials By request cancelled");
+            fetchLetter();
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to send Initials By request");
+        } finally {
+            setIsAssigningInitialsBy(false);
+        }
+    };
 
-// NEW — the SELECTED candidate's own confirmation. Only enabled/usable
-// when the logged-in user is the one currently pending on this letter.
-const handleConfirmInitialsBy = async () => {
-    try {
-        setIsConfirmingInitialsBy(true);
-        await api.put(`/v1/letter/${id}/initials-by/confirm`, {
-            notes: confirmNotes.trim() || null,
-        });
-        toast.success("Initials confirmed");
-        setConfirmNotes("");
-        fetchLetter();
-    } catch (error) {
-        toast.error(error.response?.data?.message || "Failed to confirm");
-    } finally {
-        setIsConfirmingInitialsBy(false);
-    }
-};
+    // the SELECTED candidate's own confirmation
+    const handleConfirmInitialsBy = async () => {
+        try {
+            setIsConfirmingInitialsBy(true);
+            await api.put(`/v1/letter/${id}/initials-by/confirm`, {
+                notes: confirmNotes.trim() || null,
+            });
+            toast.success("Initials confirmed");
+            setConfirmNotes("");
+            fetchLetter();
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Failed to confirm");
+        } finally {
+            setIsConfirmingInitialsBy(false);
+        }
+    };
 
     const toggleDept = (deptId: number) =>
         setSelectedDeptIds(prev => prev.includes(deptId) ? prev.filter(d => d !== deptId) : [...prev, deptId]);
 
-    const toggleAssignee = (assigneeId: number) =>
-        setSelectedAssigneeIds(prev => prev.includes(assigneeId) ? prev.filter(a => a !== assigneeId) : [...prev, assigneeId]);
+    // CHANGED — ticking an assignee also adds that assignee's own section
+    // (only when this user may change departments; the backend routes it too).
+    const toggleAssignee = (assigneeId: number) => {
+        const isAdding = !selectedAssigneeIds.includes(assigneeId);
+        setSelectedAssigneeIds(prev => isAdding ? [...prev, assigneeId] : prev.filter(a => a !== assigneeId));
+
+        if (isAdding && hasPermission('letter.change_department')) {
+            const assignee = allAssignees.find(a => a.id === assigneeId);
+            if (assignee?.department_id) {
+                const match = departmentAccounts.find(da =>
+                    da.department_id === assignee.department_id &&
+                    (da.department_unit_id ?? null) === (assignee.department_unit_id ?? null));
+                if (match && !selectedDeptIds.includes(match.id)) {
+                    setSelectedDeptIds(prev => prev.includes(match.id) ? prev : [...prev, match.id]);
+                }
+            }
+        }
+    };
 
     const handleBackToLetters = () => {
         requestNavigation(() => router.push('/letters'));
@@ -1140,227 +1159,217 @@ const handleConfirmInitialsBy = async () => {
                     <Card>
                         <CardContent className="pt-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-5">
-                                
 
-    {/* Initials By — left */}
-    {letter.initials_by && (
-        <div>
-            <p className="text-sm text-muted-foreground mb-2">Initials By</p>
-            <div className="inline-block border-2 border-slate-400 dark:border-slate-500 rounded-sm px-6 py-4 text-slate-700 dark:text-slate-300">
-                <div className="flex items-baseline gap-2 flex-wrap text-sm">
-                    <span className="font-semibold">{letter.initials_by.name}</span>
-                    {letter.initials_by_notes && (
-                        <span className="text-xs italic text-slate-500 dark:text-slate-400">
-                            ({letter.initials_by_notes})
-                        </span>
-                    )}
-                </div>
-            </div>
-        </div>
-    )}
+                                {/* Initials By — left */}
+                                {letter.initials_by && (
+                                    <div>
+                                        <p className="text-sm text-muted-foreground mb-2">Initials By</p>
+                                        <div className="inline-block border-2 border-slate-400 dark:border-slate-500 rounded-sm px-6 py-4 text-slate-700 dark:text-slate-300">
+                                            <div className="flex items-baseline gap-2 flex-wrap text-sm">
+                                                <span className="font-semibold">{letter.initials_by.name}</span>
+                                                {letter.initials_by_notes && (
+                                                    <span className="text-xs italic text-slate-500 dark:text-slate-400">
+                                                        ({letter.initials_by_notes})
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
-    {/* Ordered By — right */}
-    {(letter.order_by_role || letter.order_by_action) && (
-        <div>
-            <p className="text-sm text-muted-foreground mb-2">Ordered By</p>
-            <div
-                className="inline-block border-2 border-purple-700 dark:border-purple-400 rounded-sm px-6 py-4 text-purple-800 dark:text-purple-300"
-                style={{fontFamily: 'Georgia, serif'}}
-            >
-                <div className="flex items-baseline gap-2 flex-wrap text-sm justify-center">
-                    {letter.order_by_role && (
-                        <span className="font-semibold">{letter.order_by_role.name}</span>
-                    )}
-                    {letter.order_by_role && letter.order_by_action && <span>/</span>}
-                    {letter.order_by_action && (
-                        <span>{letter.order_by_action.name}</span>
-                    )}
-                </div>
-                <div className="border-t-2 border-purple-700 dark:border-purple-400 mt-3 pt-2 text-center text-sm font-semibold whitespace-nowrap">
-                    සමූපකාර සංවර්ධන කොමසාරිස් හා සමිති රෙජිස්ට්‍රාර්
-                </div>
-            </div>
-        </div>
-    )}
+                                {/* Ordered By — right */}
+                                {(letter.order_by_role || letter.order_by_action) && (
+                                    <div>
+                                        <p className="text-sm text-muted-foreground mb-2">Ordered By</p>
+                                        <div
+                                            className="inline-block border-2 border-purple-700 dark:border-purple-400 rounded-sm px-6 py-4 text-purple-800 dark:text-purple-300"
+                                            style={{fontFamily: 'Georgia, serif'}}
+                                        >
+                                            <div className="flex items-baseline gap-2 flex-wrap text-sm justify-center">
+                                                {letter.order_by_role && (
+                                                    <span className="font-semibold">{letter.order_by_role.name}</span>
+                                                )}
+                                                {letter.order_by_role && letter.order_by_action && <span>/</span>}
+                                                {letter.order_by_action && (
+                                                    <span>{letter.order_by_action.name}</span>
+                                                )}
+                                            </div>
+                                            <div className="border-t-2 border-purple-700 dark:border-purple-400 mt-3 pt-2 text-center text-sm font-semibold whitespace-nowrap">
+                                                සමූපකාර සංවර්ධන කොමසාරිස් හා සමිති රෙජිස්ට්‍රාර්
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
-    {/* CHANGED — everything below is now ordered to match the Insert Letter
-        form field-by-field, so Letter View shows exactly what was entered,
-        in the same sequence it was entered in. */}
+                                {/* Everything below is ordered to match the Insert Letter form
+                                    field-by-field, so Letter View shows exactly what was entered. */}
 
-    <div>
-        <p className="text-sm text-muted-foreground">Received Date</p>
-        <p className="font-semibold mt-0.5">{formatDate(letter.received_datetime)}</p>
-    </div>
-    <div>
-        <p className="text-sm text-muted-foreground">Code</p>
-        <p className="font-semibold mt-0.5">{letter.code}</p>
-    </div>
-    <div>
-        <p className="text-sm text-muted-foreground">Source</p>
-        <p className="font-semibold mt-0.5">{letter.source?.name || "—"}</p>
-    </div>
-    <div>
-        <p className="text-sm text-muted-foreground">Sender / Organization</p>
-        <p className="font-semibold mt-0.5">{letter.organization?.name || "—"}</p>
-    </div>
-    {letter.registered_post_no && (
-        <div>
-            <p className="text-sm text-muted-foreground">Registered Postal Number</p>
-            <p className="font-semibold mt-0.5">{letter.registered_post_no}</p>
-        </div>
-    )}
-    <div>
-        <p className="text-sm text-muted-foreground">Sender's Address</p>
-        <p className="font-semibold mt-0.5">{letter.sender || "—"}</p>
-    </div>
-    <div>
-        <p className="text-sm text-muted-foreground">Sender's Email</p>
-        <p className="font-semibold mt-0.5">{letter.email || "N/A"}</p>
-    </div>
-    <div>
-        <p className="text-sm text-muted-foreground">Sender's Telephone</p>
-        <p className="font-semibold mt-0.5">{letter.telephone || "N/A"}</p>
-    </div>
-    {letter.other && (
-        <div className="md:col-span-2">
-            <p className="text-sm text-muted-foreground">Cheque No / Money Order No</p>
-            <p className="font-semibold mt-0.5">{letter.other}</p>
-        </div>
-    )}
-    {letter.sender_subject_no && (
-        <div>
-            <p className="text-sm text-muted-foreground">Sender's Subject No</p>
-            <p className="font-semibold mt-0.5">{letter.sender_subject_no}</p>
-        </div>
-    )}
-    <div className="md:col-span-2">
-        <p className="text-sm text-muted-foreground">Subject / Content</p>
-        <p className="font-semibold mt-0.5 whitespace-pre-wrap">{letter.subject}</p>
-    </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Received Date</p>
+                                    <p className="font-semibold mt-0.5">{formatDate(letter.received_datetime)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Code</p>
+                                    <p className="font-semibold mt-0.5">{letter.code}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Source</p>
+                                    <p className="font-semibold mt-0.5">{letter.source?.name || "—"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Is this a Public Complaint? (මහජන පැමිණිල්ලක්ද?)</p>
+                                    <p className="font-semibold mt-0.5">{letter.is_public_complaint ? "Yes" : "No"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Sender / Organization</p>
+                                    <p className="font-semibold mt-0.5">{letter.organization?.name || "—"}</p>
+                                </div>
+                                {letter.registered_post_no && (
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Registered Postal Number</p>
+                                        <p className="font-semibold mt-0.5">{letter.registered_post_no}</p>
+                                    </div>
+                                )}
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Sender&apos;s Address</p>
+                                    <p className="font-semibold mt-0.5">{letter.sender || "—"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Sender&apos;s Email</p>
+                                    <p className="font-semibold mt-0.5">{letter.email || "N/A"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Sender&apos;s Telephone</p>
+                                    <p className="font-semibold mt-0.5">{letter.telephone || "N/A"}</p>
+                                </div>
+                                {letter.other && (
+                                    <div className="md:col-span-2">
+                                        <p className="text-sm text-muted-foreground">Cheque No / Money Order No</p>
+                                        <p className="font-semibold mt-0.5">{letter.other}</p>
+                                    </div>
+                                )}
+                                {letter.sender_subject_no && (
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Sender&apos;s Subject No</p>
+                                        <p className="font-semibold mt-0.5">{letter.sender_subject_no}</p>
+                                    </div>
+                                )}
+                                <div className="md:col-span-2">
+                                    <p className="text-sm text-muted-foreground">Subject / Content</p>
+                                    <p className="font-semibold mt-0.5 whitespace-pre-wrap">{letter.subject}</p>
+                                </div>
 
-    {/* NEW — was captured on Insert Letter but never shown on Letter View */}
-    <div>
-        <p className="text-sm text-muted-foreground">Is this a Public Complaint? (මහජන පැමිණිල්ලක්ද?)</p>
-        <p className="font-semibold mt-0.5">{letter.is_public_complaint ? "Yes" : "No"}</p>
-    </div>
+                                {/* System-generated fields — only exist after the letter is created */}
+                                <div>
+                                    <p className="text-sm text-muted-foreground">System Date</p>
+                                    <p className="font-semibold mt-0.5">{formatDate(letter.create_datetime)}</p>
+                                </div>
+                                {letter.completion_file_name && (
+                                    <div className="md:col-span-2">
+                                        <p className="text-sm text-muted-foreground">File Number</p>
+                                        <p className="font-semibold mt-0.5">{letter.completion_file_name}</p>
+                                    </div>
+                                )}
+                            </div>
 
-    {/* System-generated fields — not part of the Insert Letter form itself,
-        kept at the end since they only exist after the letter is created. */}
-    <div>
-        <p className="text-sm text-muted-foreground">System Date</p>
-        <p className="font-semibold mt-0.5">{formatDate(letter.create_datetime)}</p>
-    </div>
-    {letter.completion_file_name && (
-        <div className="md:col-span-2">
-            <p className="text-sm text-muted-foreground">File Name</p>
-            <p className="font-semibold mt-0.5">{letter.completion_file_name}</p>
-        </div>
-    )}
+                            {/* Cheque deposit — now OUTSIDE the grid, so the separator spans the full card */}
+                            {letter.other && (
+                                <>
+                                    <Separator className="my-5"/>
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id="cheque-deposited"
+                                                    checked={chequeDeposited}
+                                                    onCheckedChange={(checked) => setChequeDeposited(!!checked)}
+                                                    disabled={!hasPermission('letter.cheque_update') || (letter.cheque_deposited && !isEditingCheque)}
+                                                />
+                                                <label htmlFor="cheque-deposited" className="text-sm font-medium cursor-pointer">
+                                                    Cheque Deposited
+                                                </label>
+                                            </div>
+                                            {hasPermission('letter.cheque_update') && letter.cheque_deposited && !isEditingCheque && (
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 px-2 text-xs"
+                                                    onClick={() => setIsEditingCheque(true)}
+                                                >
+                                                    <Pencil className="mr-1 h-3 w-3"/>Edit
+                                                </Button>
+                                            )}
+                                        </div>
 
-
-                                
-                               
-                                
-
-                              {letter.other && (
-                                            <>
-                                                <Separator className="my-5"/>
-                                                <div className="space-y-3">
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="flex items-center space-x-2">
-                                                            <Checkbox
-                                                                id="cheque-deposited"
-                                                                checked={chequeDeposited}
-                                                                onCheckedChange={(checked) => setChequeDeposited(!!checked)}
-                                                                disabled={!hasPermission('letter.cheque_update') || (letter.cheque_deposited && !isEditingCheque)}
-                                                            />
-                                                            <label htmlFor="cheque-deposited" className="text-sm font-medium cursor-pointer">
-                                                                Cheque Deposited
-                                                            </label>
-                                                        </div>
-                                                        {hasPermission('letter.cheque_update') && letter.cheque_deposited && !isEditingCheque && (
-                                                            <Button
-                                                                type="button"
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className="h-7 px-2 text-xs"
-                                                                onClick={() => setIsEditingCheque(true)}
-                                                            >
-                                                                <Pencil className="mr-1 h-3 w-3"/>Edit
-                                                            </Button>
-                                                        )}
-                                                    </div>
-
-                                                    {(isEditingCheque || !letter.cheque_deposited) && chequeDeposited && (
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-6">
-                                                            <div>
-                                                                <label className="text-xs text-muted-foreground">Deposit Date</label>
-                                                                <input type="date" value={chequeDepositDate}
-                                                                    onChange={(e) => setChequeDepositDate(e.target.value)}
-                                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
-                                                            </div>
-                                                            <div>
-                                                                <label className="text-xs text-muted-foreground">Account No</label>
-                                                                <input type="text" value={chequeAccountNo}
-                                                                    onChange={(e) => setChequeAccountNo(e.target.value)}
-                                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
-                                                            </div>
-                                                            <div>
-                                                                <label className="text-xs text-muted-foreground">Bank</label>
-                                                                <input type="text" value={chequeBank}
-                                                                    onChange={(e) => setChequeBank(e.target.value)}
-                                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
-                                                            </div>
-                                                            <div>
-                                                                <label className="text-xs text-muted-foreground">Branch</label>
-                                                                <input type="text" value={chequeBranch}
-                                                                    onChange={(e) => setChequeBranch(e.target.value)}
-                                                                    className="w-full rounded-md border px-3 py-2 text-sm"/>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {hasPermission('letter.cheque_update') && (isEditingCheque || !letter.cheque_deposited) && (
-                                                        <div className="flex gap-2">
-                                                            <Button size="sm" onClick={handleSaveCheque} disabled={isSavingCheque}>
-                                                                {isSavingCheque ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</> : "Save Cheque Details"}
-                                                            </Button>
-                                                            {isEditingCheque && (
-                                                                <Button
-                                                                    type="button"
-                                                                    size="sm"
-                                                                    variant="outline"
-                                                                    onClick={() => {
-                                                                        setChequeDeposited(!!letter.cheque_deposited);
-                                                                        setChequeDepositDate(letter.cheque_deposit_date ? letter.cheque_deposit_date.slice(0, 10) : "");
-                                                                        setChequeAccountNo(letter.cheque_account_no || "");
-                                                                        setChequeBank(letter.cheque_bank || "");
-                                                                        setChequeBranch(letter.cheque_branch || "");
-                                                                        setIsEditingCheque(false);
-                                                                    }}
-                                                                >
-                                                                    Cancel
-                                                                </Button>
-                                                            )}
-                                                        </div>
-                                                    )}
-
-                                                    {letter.cheque_deposited && !isEditingCheque && (
-                                                        <div className="border rounded-md p-3 space-y-1 bg-muted/20">
-                                                            <p className="text-xs font-medium text-muted-foreground mb-1">Saved deposit details</p>
-                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                                                                <p><span className="text-muted-foreground">Deposit Date:</span> {letter.cheque_deposit_date ? formatDate(letter.cheque_deposit_date) : "—"}</p>
-                                                                <p><span className="text-muted-foreground">Account No:</span> {letter.cheque_account_no || "—"}</p>
-                                                                <p><span className="text-muted-foreground">Bank:</span> {letter.cheque_bank || "—"}</p>
-                                                                <p><span className="text-muted-foreground">Branch:</span> {letter.cheque_branch || "—"}</p>
-                                                            </div>
-                                                        </div>
-                                                    )}
+                                        {(isEditingCheque || !letter.cheque_deposited) && chequeDeposited && (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-6">
+                                                <div>
+                                                    <label className="text-xs text-muted-foreground">Deposit Date</label>
+                                                    <input type="date" value={chequeDepositDate}
+                                                        onChange={(e) => setChequeDepositDate(e.target.value)}
+                                                        className="w-full rounded-md border px-3 py-2 text-sm"/>
                                                 </div>
-                                            </>
+                                                <div>
+                                                    <label className="text-xs text-muted-foreground">Account No</label>
+                                                    <input type="text" value={chequeAccountNo}
+                                                        onChange={(e) => setChequeAccountNo(e.target.value)}
+                                                        className="w-full rounded-md border px-3 py-2 text-sm"/>
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs text-muted-foreground">Bank</label>
+                                                    <input type="text" value={chequeBank}
+                                                        onChange={(e) => setChequeBank(e.target.value)}
+                                                        className="w-full rounded-md border px-3 py-2 text-sm"/>
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs text-muted-foreground">Branch</label>
+                                                    <input type="text" value={chequeBranch}
+                                                        onChange={(e) => setChequeBranch(e.target.value)}
+                                                        className="w-full rounded-md border px-3 py-2 text-sm"/>
+                                                </div>
+                                            </div>
                                         )}
 
-                            </div>        
+                                        {hasPermission('letter.cheque_update') && (isEditingCheque || !letter.cheque_deposited) && (
+                                            <div className="flex gap-2">
+                                                <Button size="sm" onClick={handleSaveCheque} disabled={isSavingCheque}>
+                                                    {isSavingCheque ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Saving...</> : "Save Cheque Details"}
+                                                </Button>
+                                                {isEditingCheque && (
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => {
+                                                            setChequeDeposited(!!letter.cheque_deposited);
+                                                            setChequeDepositDate(letter.cheque_deposit_date ? letter.cheque_deposit_date.slice(0, 10) : "");
+                                                            setChequeAccountNo(letter.cheque_account_no || "");
+                                                            setChequeBank(letter.cheque_bank || "");
+                                                            setChequeBranch(letter.cheque_branch || "");
+                                                            setIsEditingCheque(false);
+                                                        }}
+                                                    >
+                                                        Cancel
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {letter.cheque_deposited && !isEditingCheque && (
+                                            <div className="border rounded-md p-3 space-y-1 bg-muted/20">
+                                                <p className="text-xs font-medium text-muted-foreground mb-1">Saved deposit details</p>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                                    <p><span className="text-muted-foreground">Deposit Date:</span> {letter.cheque_deposit_date ? formatDate(letter.cheque_deposit_date) : "—"}</p>
+                                                    <p><span className="text-muted-foreground">Account No:</span> {letter.cheque_account_no || "—"}</p>
+                                                    <p><span className="text-muted-foreground">Bank:</span> {letter.cheque_bank || "—"}</p>
+                                                    <p><span className="text-muted-foreground">Branch:</span> {letter.cheque_branch || "—"}</p>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
 
                             {letter.attachments && letter.attachments.length > 0 && (
                                 <>
@@ -1612,6 +1621,7 @@ const handleConfirmInitialsBy = async () => {
                 <div className="space-y-4">
                     <Card>
                         <CardContent className="pt-6 space-y-5">
+                            {/* Departments (sections) */}
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <p className="text-sm font-medium">Departments</p>
@@ -1668,6 +1678,7 @@ const handleConfirmInitialsBy = async () => {
                             </div>
                             <Separator/>
 
+                            {/* Assignees */}
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <p className="text-sm font-medium">Assignees</p>
@@ -1686,10 +1697,9 @@ const handleConfirmInitialsBy = async () => {
                                 {selectedAssigneeIds.length > 0 ? (
                                     <div className="flex flex-wrap gap-1">
                                         {selectedAssigneeIds.map(assigneeId => {
-                                            // const assignee = allAssignees.find(a => a.id === assigneeId);
                                             const assignee = letter.assignees.find(a => a.id === assigneeId)
-                                                       || allAssignees.find(a => a.id === assigneeId);
-                                                       const isSelf = assigneeId === user?.id;  
+                                                || allAssignees.find(a => a.id === assigneeId);
+                                            const isSelf = assigneeId === user?.id;
                                             return assignee ? (
                                                 <Badge key={assigneeId} variant="secondary" className="text-xs gap-1">
                                                     {assignee.name}
@@ -1713,10 +1723,10 @@ const handleConfirmInitialsBy = async () => {
                                                 onValueChange={(v) => setAssigneeDeptFilter(parseInt(v) || 0)}
                                             >
                                                 <SelectTrigger className="h-8 text-xs">
-                                                    <SelectValue placeholder="Filter by department"/>
+                                                    <SelectValue placeholder="Select a section"/>
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="0">All sectionss</SelectItem>
+                                                    <SelectItem value="0">Select a section</SelectItem>
                                                     {allDepartments.map(d => (
                                                         <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
                                                     ))}
@@ -1746,7 +1756,11 @@ const handleConfirmInitialsBy = async () => {
                                             className="w-full rounded-md border px-2 h-8 text-xs"
                                         />
                                         <div className="grid grid-cols-1 gap-2 max-h-44 overflow-y-auto">
-                                            {filteredAssignees.length === 0 ? (
+                                            {!hasAssigneeScope ? (
+                                                <p className="text-sm text-muted-foreground">
+                                                    Select a section (and sub-unit) to see its assignees, or search by name.
+                                                </p>
+                                            ) : filteredAssignees.length === 0 ? (
                                                 <p className="text-sm text-muted-foreground">No assignees match this filter</p>
                                             ) : filteredAssignees.map(a => (
                                                 <div key={a.id} className="flex items-center space-x-2">
@@ -1758,9 +1772,9 @@ const handleConfirmInitialsBy = async () => {
                                                     />
                                                     <label htmlFor={`assignee-${a.id}`} className="text-sm cursor-pointer leading-tight">
                                                         {a.name}
-                                                         {a.id === user?.id && (
-                                                           <span className="text-xs text-muted-foreground ml-1">(you)</span>
-                                                       )}
+                                                        {a.id === user?.id && (
+                                                            <span className="text-xs text-muted-foreground ml-1">(you)</span>
+                                                        )}
                                                     </label>
                                                 </div>
                                             ))}
@@ -1769,95 +1783,93 @@ const handleConfirmInitialsBy = async () => {
                                 )}
                             </div>
 
-                           {/* CHANGED — Initials By is now a two-step handoff:
-    1) admin (letter.initials_by_manage) picks WHO should confirm
-    2) that SAME person (letter.initials_by, and only for their own
-       pending request) adds optional notes and clicks OK
-    Only step 2 actually sets what shows in the seal block. */}
-{(hasPermission('letter.initials_by_manage') || hasPermission('letter.initials_by') || letter.initials_by || letter.initials_by_pending) && (
-    <>
-        <Separator/>
-        <div className="space-y-3">
-            <p className="text-sm font-medium">Initials By</p>
+                            {/* Initials By — two-step handoff:
+                                1) admin (letter.initials_by_manage) picks WHO should confirm
+                                2) that SAME person (letter.initials_by, only for their own pending
+                                   request) adds optional notes and clicks OK
+                                Only step 2 actually sets what shows in the seal block. */}
+                            {(hasPermission('letter.initials_by_manage') || hasPermission('letter.initials_by') || letter.initials_by || letter.initials_by_pending) && (
+                                <>
+                                    <Separator/>
+                                    <div className="space-y-3">
+                                        <p className="text-sm font-medium">Initials By</p>
 
-            {/* Step 1 — admin picks the candidate */}
-            {hasPermission('letter.initials_by_manage') && (
-                <div className="space-y-2">
-                    <p className="text-xs text-muted-foreground">Send for confirmation to</p>
-                    <div className="flex gap-2">
-                        <Select
-                            value={selectedPendingCandidateId ? selectedPendingCandidateId.toString() : ""}
-                            onValueChange={(v) => setSelectedPendingCandidateId(parseInt(v) || 0)}
-                        >
-                            <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select who should confirm this"/>
-                            </SelectTrigger>
-                            <SelectContent>
-                                {initialsByCandidates.map(c => (
-                                    <SelectItem key={c.id} value={c.id.toString()}>
-                                        {c.name}{c.is_default ? ' (default)' : ''}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Button
-                            size="sm"
-                            className="h-9 px-3 text-xs shrink-0"
-                            onClick={handleAssignInitialsBy}
-                            disabled={isAssigningInitialsBy || selectedPendingCandidateId === (letter.initials_by_pending?.id || 0)}
-                        >
-                            {isAssigningInitialsBy ? <Loader2 className="h-3 w-3 animate-spin"/> : "Send"}
-                        </Button>
-                    </div>
-                    {letter.initials_by_pending && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400">
-                            Awaiting confirmation from {letter.initials_by_pending.name}
-                        </p>
-                    )}
-                </div>
-            )}
+                                        {/* Step 1 — admin picks the candidate */}
+                                        {hasPermission('letter.initials_by_manage') && (
+                                            <div className="space-y-2">
+                                                <p className="text-xs text-muted-foreground">Send for confirmation to</p>
+                                                <div className="flex gap-2">
+                                                    <Select
+                                                        value={selectedPendingCandidateId ? selectedPendingCandidateId.toString() : ""}
+                                                        onValueChange={(v) => setSelectedPendingCandidateId(parseInt(v) || 0)}
+                                                    >
+                                                        <SelectTrigger className="w-full">
+                                                            <SelectValue placeholder="Select who should confirm this"/>
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {initialsByCandidates.map(c => (
+                                                                <SelectItem key={c.id} value={c.id.toString()}>
+                                                                    {c.name}{c.is_default ? ' (default)' : ''}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <Button
+                                                        size="sm"
+                                                        className="h-9 px-3 text-xs shrink-0"
+                                                        onClick={handleAssignInitialsBy}
+                                                        disabled={isAssigningInitialsBy || selectedPendingCandidateId === (letter.initials_by_pending?.id || 0)}
+                                                    >
+                                                        {isAssigningInitialsBy ? <Loader2 className="h-3 w-3 animate-spin"/> : "Send"}
+                                                    </Button>
+                                                </div>
+                                                {letter.initials_by_pending && (
+                                                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                                                        Awaiting confirmation from {letter.initials_by_pending.name}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
 
-            {/* Step 2 — the selected candidate confirms (only visible to them) */}
-            {hasPermission('letter.initials_by') && letter.initials_by_pending?.id === user?.id && (
-                <div className="border rounded-md p-3 space-y-2 bg-amber-50/50 dark:bg-amber-950/20">
-                    <p className="text-xs font-medium">This letter is waiting for your initials confirmation</p>
-                    <textarea
-                        value={confirmNotes}
-                        onChange={(e) => setConfirmNotes(e.target.value)}
-                        rows={2}
-                        placeholder="Notes (optional)"
-                        className="w-full rounded-md border px-2 py-1.5 text-xs resize-none"
-                    />
-                    <Button
-                        size="sm"
-                        className="h-7 px-3 text-xs"
-                        onClick={handleConfirmInitialsBy}
-                        disabled={isConfirmingInitialsBy}
-                    >
-                        {isConfirmingInitialsBy ? <><Loader2 className="mr-1 h-3 w-3 animate-spin"/>Saving...</> : "OK"}
-                    </Button>
-                </div>
-            )}
+                                        {/* Step 2 — the selected candidate confirms (only visible to them) */}
+                                        {hasPermission('letter.initials_by') && letter.initials_by_pending?.id === user?.id && (
+                                            <div className="border rounded-md p-3 space-y-2 bg-amber-50/50 dark:bg-amber-950/20">
+                                                <p className="text-xs font-medium">This letter is waiting for your initials confirmation</p>
+                                                <textarea
+                                                    value={confirmNotes}
+                                                    onChange={(e) => setConfirmNotes(e.target.value)}
+                                                    rows={2}
+                                                    placeholder="Notes (optional)"
+                                                    className="w-full rounded-md border px-2 py-1.5 text-xs resize-none"
+                                                />
+                                                <Button
+                                                    size="sm"
+                                                    className="h-7 px-3 text-xs"
+                                                    onClick={handleConfirmInitialsBy}
+                                                    disabled={isConfirmingInitialsBy}
+                                                >
+                                                    {isConfirmingInitialsBy ? <><Loader2 className="mr-1 h-3 w-3 animate-spin"/>Saving...</> : "OK"}
+                                                </Button>
+                                            </div>
+                                        )}
 
-            {/* Confirmed value — this is what actually shows in the seal block */}
-            {letter.initials_by ? (
-                <div className="space-y-0.5">
-                    <Badge variant="secondary" className="text-xs">{letter.initials_by.name}</Badge>
-                    {letter.initials_by_notes && (
-                        <p className="text-xs text-muted-foreground">{letter.initials_by_notes}</p>
-                    )}
-                </div>
-            ) : !letter.initials_by_pending ? (
-                <p className="text-xs text-muted-foreground">Not yet requested</p>
-            ) : null}
-        </div>
-    </>
-)}
+                                        {/* Confirmed value — this is what actually shows in the seal block */}
+                                        {letter.initials_by ? (
+                                            <div className="space-y-0.5">
+                                                <Badge variant="secondary" className="text-xs">{letter.initials_by.name}</Badge>
+                                                {letter.initials_by_notes && (
+                                                    <p className="text-xs text-muted-foreground">{letter.initials_by_notes}</p>
+                                                )}
+                                            </div>
+                                        ) : !letter.initials_by_pending ? (
+                                            <p className="text-xs text-muted-foreground">Not yet requested</p>
+                                        ) : null}
+                                    </div>
+                                </>
+                            )}
 
-                            {/* CHANGED — Order By now shows TWO pickers: Role
-                                (නි.කො / ස.කො) and Action (කරු. ඉදිරි කටයුතු සඳහා,
-                                etc). Both are independent lists that whoever holds
-                                letter.order_by can pick from, and each has its own
+                            {/* Order By — TWO pickers: Role (නි.කො / ස.කො) and Action
+                                (කරු. ඉදිරි කටයුතු සඳහා, etc), each with its own
                                 "+ Add a missing option" inline form. */}
                             {(hasPermission('letter.order_by') || letter.order_by_role || letter.order_by_action) && (
                                 <>
@@ -1867,7 +1879,7 @@ const handleConfirmInitialsBy = async () => {
 
                                         {hasPermission('letter.order_by') ? (
                                             <>
-                                                {/* Role picker: නි.කො / ස.කො */}
+                                                {/* Role picker */}
                                                 <div className="space-y-2">
                                                     <p className="text-xs text-muted-foreground">Role</p>
                                                     <Select
@@ -1912,7 +1924,7 @@ const handleConfirmInitialsBy = async () => {
                                                     )}
                                                 </div>
 
-                                                {/* Action picker: කරු. ඉදිරි කටයුතු සඳහා, etc */}
+                                                {/* Action picker */}
                                                 <div className="space-y-2">
                                                     <p className="text-xs text-muted-foreground">Action</p>
                                                     <Select
@@ -1971,6 +1983,7 @@ const handleConfirmInitialsBy = async () => {
                                 </>
                             )}
 
+                            {/* Assignee Statuses */}
                             {letter.assignee_statuses && letter.assignee_statuses.length > 0 && (
                                 <>
                                     <Separator/>
@@ -1986,7 +1999,7 @@ const handleConfirmInitialsBy = async () => {
                                                     <div key={row.assignee_id} className="border rounded-md p-3 space-y-2">
                                                         <div className="flex items-center justify-between gap-2">
                                                             <span className="text-sm font-medium">{row.assignee_name}</span>
-                                                            
+
                                                             {row.can_edit && !isEditingThisRow && (
                                                                 <Button
                                                                     type="button"
@@ -2029,7 +2042,7 @@ const handleConfirmInitialsBy = async () => {
                                                                             onValueChange={(v) => setAssigneeStatusDraftFileName(v)}
                                                                         >
                                                                             <SelectTrigger className="h-8 text-xs">
-                                                                                <SelectValue placeholder={`File name for "${draftAssigneeStatusObj?.name}"`}/>
+                                                                                <SelectValue placeholder={`File number for "${draftAssigneeStatusObj?.name}"`}/>
                                                                             </SelectTrigger>
                                                                             <SelectContent>
                                                                                 {myManagedFiles.map(f => (
@@ -2044,7 +2057,7 @@ const handleConfirmInitialsBy = async () => {
                                                                             type="text"
                                                                             value={assigneeStatusDraftFileName}
                                                                             onChange={(e) => setAssigneeStatusDraftFileName(e.target.value)}
-                                                                            placeholder={`File name for "${draftAssigneeStatusObj?.name}"`}
+                                                                            placeholder={`File number for "${draftAssigneeStatusObj?.name}"`}
                                                                             className="w-full rounded-md border px-2 h-8 text-xs"
                                                                         />
                                                                     )
@@ -2105,7 +2118,7 @@ const handleConfirmInitialsBy = async () => {
                                                                 </span>
                                                                 {row.file_name && (
                                                                     <p className="text-xs text-muted-foreground">
-                                                                        File Name: <span className="font-medium text-foreground">{row.file_name}</span>
+                                                                        File Number: <span className="font-medium text-foreground">{row.file_name}</span>
                                                                     </p>
                                                                 )}
                                                                 {row.copies_forwarded_to && (
@@ -2124,10 +2137,10 @@ const handleConfirmInitialsBy = async () => {
                                                                     </p>
                                                                 )}
                                                                 {row.assigned_by_name && (
-                               <p className="text-xs text-muted-foreground">
-                                   Assigned By: <span className="font-medium text-foreground">{row.assigned_by_name}</span>
-                               </p>
-                           )}
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        Assigned By: <span className="font-medium text-foreground">{row.assigned_by_name}</span>
+                                                                    </p>
+                                                                )}
                                                             </div>
                                                         )}
                                                     </div>
@@ -2138,6 +2151,7 @@ const handleConfirmInitialsBy = async () => {
                                 </>
                             )}
 
+                            {/* Recommendation */}
                             <div className="flex items-center space-x-2">
                                 <Checkbox
                                     id="send-to-recommendation"

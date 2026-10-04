@@ -34,21 +34,24 @@ interface Column {
     checked: boolean;
 }
 
+// CHANGED — the ORDER of this list is the order of the columns in BOTH the
+// printed report and the Excel file (the backend now follows the order it is
+// sent). "Subject/Content of the letter" sits right after "Sender's Address".
 const DEFAULT_COLUMNS: Column[] = [
     {id: 'id', label: 'ID', checked: true},
     {id: 'code', label: 'Code', checked: true},
     {id: 'organization.name', label: 'Sender/Organization of the letter', checked: true},
-    {id: 'subject', label: 'Subject/Content of the letter ', checked: true},
+    {id: 'sender', label: "Sender's Address", checked: true},
+    {id: 'subject', label: 'Subject/Content of the letter', checked: true},
     {id: 'sender_subject_no', label: "Sender's Subject No", checked: true},
-    {id: 'sender', label: "Sender's Address", checked: false},
     {id: 'department.name', label: 'Section', checked: true},
     {id: 'assignee', label: 'Assignee', checked: true},
     {id: 'email', label: 'Email', checked: true},
     {id: 'telephone', label: 'Telephone', checked: false},
     {id: 'source.name', label: 'Source', checked: true},
     {id: 'status.name', label: 'Status', checked: false},
-    {id: 'completion_file_name', label: 'File Name', checked: true},
-    {id: 'other', label: 'Cheque no /Money Order No ', checked: true},
+    {id: 'completion_file_name', label: 'File Number', checked: true},
+    {id: 'other', label: 'Cheque no /Money Order No', checked: true},
     {id: 'cheque_details', label: 'Cheque Details', checked: false},
     {id: 'attachments', label: 'Attachments Count', checked: false},
     {id: 'received_datetime', label: 'Received Date', checked: true},
@@ -56,10 +59,9 @@ const DEFAULT_COLUMNS: Column[] = [
     {id: 'update_datetime', label: 'Update Date', checked: false},
 ];
 
-// Snaps a date to the start/end of its LOCAL calendar day before converting
-// to an ISO string. Without this, .toISOString() converts local midnight
-// straight to UTC (e.g. Sri Lanka +5:30 → the previous day at 18:30 UTC),
-// which silently shifted the whole date range back by several hours.
+// Snap a date to the start / end of its LOCAL calendar day before converting to
+// an ISO string (plain .toISOString() on local midnight shifts the range back
+// by the timezone offset, e.g. Sri Lanka +5:30).
 const toLocalStartOfDay = (date: Date) => {
     const d = new Date(date);
     d.setHours(0, 0, 0, 0);
@@ -71,6 +73,15 @@ const toLocalEndOfDay = (date: Date) => {
     d.setHours(23, 59, 59, 999);
     return d;
 };
+
+// letter text goes into an HTML string for the print window — escape it so a
+// "<" or "&" in a subject can never break the report
+const escapeHtml = (value: unknown): string =>
+    String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 
 export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportModalProps) {
     const [dateRange, setDateRange] = useState<{ create_date_start: Date | null; create_date_end: Date | null }>({
@@ -89,13 +100,8 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
 
     const hasSelection = selectedIds.length > 0;
 
-    // NEW — reset every filter/column back to its default state each time
-    // the dialog is freshly opened. Without this, closing the dialog and
-    // reopening it (e.g. to do a plain export right after a date-filtered
-    // one) kept the PREVIOUS date range / column selections in state,
-    // which is what made exports look like they were "ignoring" the dates
-    // the user thought they'd just picked — they were actually seeing a
-    // stale selection from an earlier open of the same modal instance.
+    // reset every filter/column to its default each time the dialog is freshly
+    // opened, so a stale selection from an earlier open can't leak into this export
     useEffect(() => {
         if (isOpen) {
             setDateRange({create_date_start: null, create_date_end: null});
@@ -106,19 +112,15 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
         }
     }, [isOpen]);
 
-    // NEW — computes the effective (start, end) pair ONCE, in one place,
-    // used identically by both handleExport and handlePrint so the two
-    // can never drift out of sync with each other. Also defends against
-    // a range picked backwards (end before start) by swapping them.
+    // The effective (start, end) pair, computed ONCE and used identically by
+    // Export and Print. Picking only one day = that whole day; a range picked
+    // backwards is swapped.
     const getDateFilter = (): { start: string | undefined; end: string | undefined } => {
         if (!dateRange.create_date_start) {
             return {start: undefined, end: undefined};
         }
         let start = dateRange.create_date_start;
         let end = dateRange.create_date_end || dateRange.create_date_start;
-        // Defensive swap — a range picked with end before start should
-        // still filter correctly rather than silently returning zero rows
-        // (start > end make most SQL BETWEEN-style filters match nothing).
         if (end < start) {
             [start, end] = [end, start];
         }
@@ -131,9 +133,15 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
     const handleExport = async () => {
         try {
             setIsDownloading(true);
+            // order of `columns` = order of the Excel columns
             const selectedColumns = columns
                 .filter(column => column.checked)
                 .map(column => column.id);
+
+            if (selectedColumns.length === 0) {
+                toast.error('Select at least one column');
+                return;
+            }
 
             const limit = numEntries === 'all' ? 0 : parseInt(numEntries);
             const {start, end} = getDateFilter();
@@ -151,9 +159,6 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                     columns: selectedColumns,
                 };
 
-            // NEW — surfaces exactly what's being sent, so if a future export
-            // still looks wrong, the actual request body is one console
-            // check away instead of a guessing game.
             console.debug('[ExportModal] export request body:', requestBody);
 
             const response = await api.post('/v1/letter/download-excel/', requestBody, {
@@ -211,56 +216,86 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
         onCloseAction();
 
         try {
+            // order of `columns` = order of the printed columns ('#' replaces ID)
             const selectedColumns = columns.filter(c => c.checked && c.id !== 'id');
             const limit = numEntries === 'all' ? 0 : parseInt(numEntries);
             const {start, end} = getDateFilter();
 
+            const baseFilter = {
+                id: 0,
+                code: "",
+                subject: "",
+                department_id: 0,
+                assignee_id: 0,
+                status_id: 0,
+                organization_id: 0,
+                other: "",
+            };
+
             const listResponse = hasSelection
                 ? await api.post(`/v1/letter/list?page=1&page_size=${selectedIds.length}`, {
+                    ...baseFilter,
                     ids: selectedIds,
                     create_date_start: null,
                     create_date_end: null,
-                    id: 0,
-                    code: "",
-                    subject: "",
-                    department_id: 0,
-                    assignee_id: 0,
-                    status_id: 0,
-                    organization_id: 0,
-                    other: "",
                 })
-                : await api.post(
-                    `/v1/letter/list?page=1&page_size=${limit || 9999}`,
-                    {
-                        create_date_start: start || null,
-                        create_date_end: end || null,
-                        id: 0,
-                        code: "",
-                        subject: "",
-                        department_id: 0,
-                        assignee_id: 0,
-                        status_id: 0,
-                        organization_id: 0,
-                        other: "",
-                    }
-                );
+                : await api.post(`/v1/letter/list?page=1&page_size=${limit || 9999}`, {
+                    ...baseFilter,
+                    create_date_start: start || null,
+                    create_date_end: end || null,
+                    is_public_complaint: publicComplaintFilter === 'all' ? null : publicComplaintFilter === 'yes',
+                });
 
             console.debug('[ExportModal] print list request dates:', {start, end});
 
-            // Explicit chronological sort by Received Date (oldest first)
-            // instead of a blind .reverse() of whatever order the API
-            // happened to return.
-            const letters = [...listResponse.data.data].sort((a, b) => {
-                const dateA = new Date(a.received_datetime || a.create_datetime);
-                const dateB = new Date(b.received_datetime || b.create_datetime);
-                return dateA - dateB;
-            });
+            // The API returns the NEWEST code first (and "N entries" = the newest N).
+            // The report reads oldest -> newest, so just reverse that order — same
+            // order as the Excel file.
+            const letters = [...(listResponse.data.data || [])].reverse();
 
             const dateRangeText = hasSelection
                 ? `${selectedIds.length} Selected Letter${selectedIds.length !== 1 ? 's' : ''}`
                 : dateRange.create_date_start
                     ? `${format(dateRange.create_date_start, 'yyyy-MM-dd')} to ${format(dateRange.create_date_end || dateRange.create_date_start, 'yyyy-MM-dd')}`
                     : 'All Dates';
+
+            const cellValue = (letter: any, colId: string): string => {
+                switch (colId) {
+                    case 'source.name':
+                        return letter.source || '';
+                    case 'organization.name':
+                        return letter.organization || '';
+                    case 'department.name':
+                        return letter.department || '';
+                    case 'status.name':
+                        return letter.status || '';
+                    case 'completion_file_name': {
+                        // the File Names are saved per assignee
+                        const names = (letter.assignee_statuses || [])
+                            .filter((s: any) => s.file_name)
+                            .map((s: any) => `${s.assignee_name}: ${s.file_name}`);
+                        return names.length ? names.join('; ') : (letter.completion_file_name || '');
+                    }
+                    case 'cheque_details': {
+                        if (!letter.other) return '';
+                        if (!letter.cheque_deposited) return 'Not deposited';
+                        const parts = ['Deposited'];
+                        if (letter.cheque_deposit_date) parts.push(format(new Date(letter.cheque_deposit_date), 'yyyy-MM-dd'));
+                        if (letter.cheque_bank) parts.push(letter.cheque_branch ? `${letter.cheque_bank} (${letter.cheque_branch})` : letter.cheque_bank);
+                        if (letter.cheque_account_no) parts.push(`A/C ${letter.cheque_account_no}`);
+                        return parts.join(' · ');
+                    }
+                    case 'received_datetime': {
+                        // the list returns the Received Date in `create_datetime`
+                        const d = letter.received_datetime || letter.create_datetime;
+                        return d ? format(new Date(d), 'yyyy-MM-dd') : '';
+                    }
+                    case 'create_datetime':
+                        return letter.create_datetime ? format(new Date(letter.create_datetime), 'yyyy-MM-dd') : '';
+                    default:
+                        return letter[colId] ?? '';
+                }
+            };
 
             printWindow.document.open();
             printWindow.document.write(`
@@ -285,7 +320,7 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                             border: none; border-bottom: 0.5px solid #3f3c3c;
                             border-right: 0.5px solid #5e5b5b;
                             padding: 7px 10px; font-size: 12px;
-                            word-wrap: break-word; overflow-wrap: break-word; white-space: normal;
+                            word-wrap: break-word; overflow-wrap: break-word; white-space: pre-wrap;
                         }
                         th:last-child, td:last-child {
                             border-right: none;
@@ -317,12 +352,12 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                                 <th colspan="${selectedColumns.length + 2}" style="border-bottom: 2px solid #333;">
                                     <h1>Department of Cooperative Development</h1>
                                     <div class="subtitle">COOP PMS - Letters Report</div>
-                                    <div class="meta">Date Range: ${dateRangeText} | Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}</div>
+                                    <div class="meta">Date Range: ${escapeHtml(dateRangeText)} | Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}</div>
                                 </th>
                             </tr>
                             <tr>
                                 <th class="col-index">#</th>
-                                ${selectedColumns.map(c => `<th${c.id === 'subject' ? ' class="col-subject"' : ''}>${c.label}</th>`).join('')}
+                                ${selectedColumns.map(c => `<th${c.id === 'subject' ? ' class="col-subject"' : ''}>${escapeHtml(c.label)}</th>`).join('')}
                                 <th>Signature</th>
                             </tr>
                         </thead>
@@ -330,36 +365,7 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                             ${letters.map((letter, index) => `
                                 <tr>
                                     <td class="col-index">${index + 1}</td>
-                                    ${selectedColumns.map(col => {
-                                        let val = '';
-                                        if (col.id === 'source.name') val = letter.source || '';
-                                        else if (col.id === 'organization.name') val = letter.organization || '';
-                                        else if (col.id === 'department.name') val = letter.department || '';
-                                        else if (col.id === 'status.name') val = letter.status || '';
-                                        else if (col.id === 'cheque_details') {
-                                            if (!letter.other) {
-                                                val = '';
-                                            } else if (!letter.cheque_deposited) {
-                                                val = 'Not deposited';
-                                            } else {
-                                                const parts = ['Deposited'];
-                                                if (letter.cheque_deposit_date) parts.push(format(new Date(letter.cheque_deposit_date), 'yyyy-MM-dd'));
-                                                if (letter.cheque_bank) parts.push(letter.cheque_branch ? `${letter.cheque_bank} (${letter.cheque_branch})` : letter.cheque_bank);
-                                                if (letter.cheque_account_no) parts.push(`A/C ${letter.cheque_account_no}`);
-                                                val = parts.join(' · ');
-                                            }
-                                        }
-                                        else if (col.id === 'received_datetime') {
-                                            val = letter.received_datetime
-                                                ? format(new Date(letter.received_datetime), 'yyyy-MM-dd')
-                                                : (letter.create_datetime ? format(new Date(letter.create_datetime), 'yyyy-MM-dd') : '');
-                                        }
-                                        else if (col.id === 'create_datetime') {
-                                            val = letter.create_datetime ? format(new Date(letter.create_datetime), 'yyyy-MM-dd') : '';
-                                        }
-                                        else val = letter[col.id] || '';
-                                        return `<td>${val}</td>`;
-                                    }).join('')}
+                                    ${selectedColumns.map(col => `<td>${escapeHtml(cellValue(letter, col.id))}</td>`).join('')}
                                     <td class="signature-col"></td>
                                 </tr>
                             `).join('')}
@@ -406,8 +412,8 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                                 <Label>Date (filters by Received Date)</Label>
                                 <DatePickerWithRange
                                     date={{
-                                        from: dateRange.create_date_start,
-                                        to: dateRange.create_date_end,
+                                        from: dateRange.create_date_start ?? undefined,
+                                        to: dateRange.create_date_end ?? undefined,
                                     }}
                                     onChange={(range) =>
                                         setDateRange({
@@ -416,6 +422,9 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                                         })
                                     }
                                 />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Pick one day, or a from – to range. Empty = all dates (newest entries first).
+                                </p>
                             </div>
 
                             <div className="space-y-2">
