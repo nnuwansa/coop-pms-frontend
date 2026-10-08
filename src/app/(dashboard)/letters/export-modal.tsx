@@ -50,7 +50,7 @@ const DEFAULT_COLUMNS: Column[] = [
     {id: 'telephone', label: 'Telephone', checked: false},
     {id: 'source.name', label: 'Source', checked: true},
     {id: 'status.name', label: 'Status', checked: false},
-    {id: 'completion_file_name', label: 'File Number', checked: true},
+    {id: 'completion_file_name', label: 'File Name', checked: true},
     {id: 'other', label: 'Cheque no /Money Order No', checked: true},
     {id: 'cheque_details', label: 'Cheque Details', checked: false},
     {id: 'attachments', label: 'Attachments Count', checked: false},
@@ -82,6 +82,42 @@ const escapeHtml = (value: unknown): string =>
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+
+// Relative width of every column in the printed report. The weights are turned
+// into percentages (they always add up to 100%), so a column such as the
+// Subject gets a lot of room and the narrow ones (#, Code, dates) stay compact
+// instead of every column being squeezed to the same tiny width.
+const COLUMN_WEIGHTS: Record<string, number> = {
+    'code': 10,
+    'organization.name': 14,
+    'sender': 14,
+    'subject': 28,
+    'sender_subject_no': 9,
+    'department.name': 10,
+    'assignee': 12,
+    'email': 13,
+    'telephone': 9,
+    'source.name': 8,
+    'status.name': 8,
+    'completion_file_name': 12,
+    'other': 11,
+    'cheque_details': 14,
+    'attachments': 6,
+    'received_datetime': 9,
+    'create_datetime': 9,
+    'update_datetime': 9,
+};
+const INDEX_WIDTH_PCT = 3.5;       // "#" column
+const SIGNATURE_WIDTH_PCT = 8;     // "Signature" column
+// columns whose text must stay on one line (codes and dates)
+const NOWRAP_COLUMNS = new Set(['code', 'received_datetime', 'create_datetime', 'update_datetime']);
+
+const getColumnWidths = (columnIds: string[]): number[] => {
+    const available = 100 - INDEX_WIDTH_PCT - SIGNATURE_WIDTH_PCT;
+    const weights = columnIds.map(id => COLUMN_WEIGHTS[id] ?? 10);
+    const total = weights.reduce((a, b) => a + b, 0) || 1;
+    return weights.map(w => Math.round((w / total) * available * 100) / 100);
+};
 
 export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportModalProps) {
     const [dateRange, setDateRange] = useState<{ create_date_start: Date | null; create_date_end: Date | null }>({
@@ -297,6 +333,8 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                 }
             };
 
+            const colWidths = getColumnWidths(selectedColumns.map(c => c.id));
+
             printWindow.document.open();
             printWindow.document.write(`
                 <!DOCTYPE html>
@@ -304,29 +342,29 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                 <head>
                     <title>Letters Report</title>
                     <style>
-                        @page { size: ${orientation}; margin: 25mm 10mm 12mm 10mm; }
+                        @page { size: ${orientation}; margin: 15mm 8mm 12mm 8mm; }
                         * { box-sizing: border-box; }
-                        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; font-size: 12px; }
+                        body { font-family: Arial, sans-serif; margin: 0; padding: 0; font-size: 11px; }
 
                         table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 0; }
                         h1, h2, .print-title {margin: 0 0 8px 0; padding: 0;  line-height: 1.2; }
                         th {
                             background-color: #f5f5f5; border: none; border-bottom: 1.5px solid #333;
                             border-right: 0.5px solid #393838;
-                            padding: 8px 10px; text-align: left; font-size: 12px;
-                            word-wrap: break-word; overflow-wrap: break-word; white-space: normal;
+                            padding: 7px 8px; text-align: left; font-size: 11px; vertical-align: bottom;
+                            word-break: normal; overflow-wrap: break-word; white-space: normal;
                         }
                         td {
                             border: none; border-bottom: 0.5px solid #3f3c3c;
                             border-right: 0.5px solid #5e5b5b;
-                            padding: 7px 10px; font-size: 12px;
-                            word-wrap: break-word; overflow-wrap: break-word; white-space: pre-wrap;
+                            padding: 6px 8px; font-size: 11px; vertical-align: top;
+                            word-break: normal; overflow-wrap: break-word; white-space: pre-wrap;
                         }
                         th:last-child, td:last-child {
                             border-right: none;
                         }
-                        .col-index { width: 44px; white-space: nowrap !important; }
-                        .col-subject { width: 24%; }
+                        .col-index { white-space: nowrap !important; text-align: center; }
+                        .nowrap { white-space: nowrap !important; }
                         tr:nth-child(even) { background-color: #fafafa; }
                         .signature-col { min-height: 32px; }
                         tr { page-break-inside: avoid; break-inside: avoid; }
@@ -343,9 +381,9 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                 <body onload="window.print()">
                     <table>
                         <colgroup>
-                            <col style="width:44px" />
-                            ${selectedColumns.map(c => `<col${c.id === 'subject' ? ' style="width:24%"' : ''} />`).join('')}
-                            <col style="width:70px" />
+                            <col style="width:${INDEX_WIDTH_PCT}%" />
+                            ${selectedColumns.map((c, i) => `<col style="width:${colWidths[i]}%" />`).join('')}
+                            <col style="width:${SIGNATURE_WIDTH_PCT}%" />
                         </colgroup>
                         <thead>
                             <tr class="header-row">
@@ -357,7 +395,7 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                             </tr>
                             <tr>
                                 <th class="col-index">#</th>
-                                ${selectedColumns.map(c => `<th${c.id === 'subject' ? ' class="col-subject"' : ''}>${escapeHtml(c.label)}</th>`).join('')}
+                                ${selectedColumns.map(c => `<th>${escapeHtml(c.label)}</th>`).join('')}
                                 <th>Signature</th>
                             </tr>
                         </thead>
@@ -365,7 +403,7 @@ export function ExportModal({isOpen, onCloseAction, selectedIds = []}: ExportMod
                             ${letters.map((letter, index) => `
                                 <tr>
                                     <td class="col-index">${index + 1}</td>
-                                    ${selectedColumns.map(col => `<td>${escapeHtml(cellValue(letter, col.id))}</td>`).join('')}
+                                    ${selectedColumns.map(col => `<td${NOWRAP_COLUMNS.has(col.id) ? ' class="nowrap"' : ''}>${escapeHtml(cellValue(letter, col.id))}</td>`).join('')}
                                     <td class="signature-col"></td>
                                 </tr>
                             `).join('')}
